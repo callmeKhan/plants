@@ -21,6 +21,7 @@ type ConfirmModal = { message: string; onConfirm: () => void } | null;
 
 export default function PlantsPage() {
   const [name, setName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [quantity, setQuantity] = useState("");
@@ -206,7 +207,13 @@ export default function PlantsPage() {
     setDetailPlantId(null);
   }
 
-  const plantIds = [...new Set(locations?.map((l) => l.plant_id) ?? [])];
+  let plantIds = [...new Set(locations?.map((l) => l.plant_id) ?? [])];
+  if (searchQuery.trim()) {
+    plantIds = plantIds.filter((pid) => {
+      const plant = plants?.find((p) => p.id === pid);
+      return plant?.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+    });
+  }
   const detailPlant = detailPlantId ? plants?.find((p) => p.id === detailPlantId) : null;
   const detailBatches = detailPlantId
     ? (locations ?? []).filter((l) => l.plant_id === detailPlantId)
@@ -322,16 +329,33 @@ export default function PlantsPage() {
           </select>
         </div>
 
-        <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded text-sm w-full">
-          Lưu
-        </button>
+        <div className="flex gap-2">
+          <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded text-sm flex-1">
+            Lưu
+          </button>
+          <button
+            type="button"
+            className="bg-blue-600 text-white px-4 py-2 rounded text-sm w-24"
+            onClick={() => setSearchQuery(name)}
+          >
+            Tìm
+          </button>
+        </div>
       </form>
 
       {msg && <p className="text-sm mb-3">{msg}</p>}
 
       {/* Plant list */}
-      <h2 className="font-semibold text-sm mb-2">
-        Danh sách ({locations?.length ?? 0} đợt)
+      <h2 className="font-semibold text-sm mb-2 flex justify-between items-center">
+        <span>Danh sách ({locations?.length ?? 0} đợt)</span>
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="text-xs text-blue-600 border border-blue-200 px-2 py-1 rounded"
+          >
+            Bỏ lọc
+          </button>
+        )}
       </h2>
       <ul className="space-y-2 text-sm">
         {plantIds.map((pid) => {
