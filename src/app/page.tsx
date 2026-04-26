@@ -5,18 +5,16 @@ import { db } from "@/lib/db";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
-  const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator !== "undefined" ? navigator.onLine : true,
-  );
+  const [isOnline, setIsOnline] = useState(false);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    const update = () => setIsOnline(navigator.onLine);
+    update(); // sync initial value post-hydration
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
     };
   }, []);
 
@@ -35,7 +33,6 @@ export default function Dashboard() {
       <div className="space-y-2 text-sm">
         <p>🌿 Plants: {plantCount ?? "..."}</p>
         <p>📦 Platforms: {platformCount ?? "..."}</p>
-        <p>📍 Placements: {locationCount ?? "..."}</p>
         <p>🔄 Pending sync: {pendingSync ?? "..."}</p>
       </div>
       <p className="mt-4 text-xs text-gray-500">

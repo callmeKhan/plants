@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
+import { processQueue } from "@/lib/sync";
 
 const POT_SIZES = [14, 16, 21];
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
@@ -125,6 +126,7 @@ export default function PlantsPage() {
     setName(""); setSelectedPlantId(null); setQuantity("");
     setImageUrl(""); setPlatformId(""); setPlantedDate(todayStr());
     setMsg("✅ Đã lưu cây và vị trí");
+    processQueue().catch(console.error);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -162,6 +164,7 @@ export default function PlantsPage() {
     });
     setEditingImage(false);
     setNewImageUrl("");
+    processQueue().catch(console.error);
   }
 
   function handleUpdateImage() {
@@ -186,6 +189,7 @@ export default function PlantsPage() {
         status: "pending", retry_count: 0, created_at: Date.now(),
       });
     }
+    processQueue().catch(console.error);
   }
 
   async function doDeletePlant(plantId: string) {
@@ -204,6 +208,7 @@ export default function PlantsPage() {
       payload: { id: plantId } as Record<string, unknown>,
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
+    processQueue().catch(console.error);
     setDetailPlantId(null);
   }
 

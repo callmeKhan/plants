@@ -13,6 +13,7 @@
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.104.1",
     "dexie": "^4.4.2",
     "dexie-react-hooks": "^4.4.0",
     "next": "16.2.4",

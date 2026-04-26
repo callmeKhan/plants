@@ -2,30 +2,27 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
-// GET /api/platforms
+// GET /api/gardens
 export async function GET() {
-  const { data, error } = await supabase.from("platforms").select("*");
+  const { data, error } = await supabase.from("gardens").select("*");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
 
-// POST /api/platforms
+// POST /api/gardens
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { floor, name, capacity, garden_id } = body;
+    const { name } = body;
 
-    if (floor == null || !name || capacity == null) {
-      return NextResponse.json(
-        { error: "floor, name, capacity are required" },
-        { status: 400 }
-      );
+    if (!name) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
 
     const id = body.id || uuidv4();
     const { data, error } = await supabase
-      .from("platforms")
-      .insert([{ id, garden_id: garden_id || null, floor, name, capacity }])
+      .from("gardens")
+      .insert([{ id, name }])
       .select()
       .single();
 
@@ -36,13 +33,13 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE /api/platforms?id=xxx
+// DELETE /api/gardens?id=xxx
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 
-  const { error } = await supabase.from("platforms").delete().eq("id", id);
+  const { error } = await supabase.from("gardens").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ deleted: id });
 }

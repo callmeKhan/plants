@@ -1,20 +1,22 @@
-import { db, type SyncQueueItem, type Plant, type Platform } from "./db";
+import { db, type SyncQueueItem, type Garden, type Plant, type Platform, type PlantLocation } from "./db";
 
 /**
- * Pull data from server (Google Sheets via API) into IndexedDB.
+ * Pull data from server (Supabase via API) into IndexedDB.
  * Merges by id — existing local records are kept (local wins for pending syncs).
  */
 export async function pullFromServer(): Promise<void> {
   try {
-    const [plantsRes, platformsRes, locationsRes] = await Promise.all([
+    const [gardensRes, plantsRes, platformsRes, locationsRes] = await Promise.all([
+      fetch("/api/gardens"),
       fetch("/api/plants"),
       fetch("/api/platforms"),
       fetch("/api/plant-locations"),
     ]);
 
-    // If API returns 503 (no Sheets config), skip pull
-    if (plantsRes.status === 503) return;
-
+    if (gardensRes.ok) {
+      const gardens: Garden[] = await gardensRes.json();
+      await db.gardens.bulkPut(gardens);
+    }
     if (plantsRes.ok) {
       const plants: Plant[] = await plantsRes.json();
       await db.plants.bulkPut(plants);
@@ -24,8 +26,7 @@ export async function pullFromServer(): Promise<void> {
       await db.platforms.bulkPut(platforms);
     }
     if (locationsRes.ok) {
-      const locations: { id: string; plant_id: string; platform_id: string; quantity: number }[] =
-        await locationsRes.json();
+      const locations: PlantLocation[] = await locationsRes.json();
       await db.plantLocations.bulkPut(locations);
     }
   } catch {
@@ -54,6 +55,7 @@ async function processItem(item: SyncQueueItem): Promise<void> {
     plant: "/api/plants",
     platform: "/api/platforms",
     plant_location: "/api/plant-locations",
+    garden: "/api/gardens",
   };
 
   const url = endpointMap[item.entity];
@@ -68,6 +70,13 @@ async function processItem(item: SyncQueueItem): Promise<void> {
     if (item.type === "CREATE") {
       res = await fetch(url, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item.payload),
+      });
+    } else if (item.type === "UPDATE") {
+      const id = (item.payload as { id?: string }).id;
+      res = await fetch(`${url}?id=${id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(item.payload),
       });
@@ -106,9 +115,10 @@ async function processItem(item: SyncQueueItem): Promise<void> {
  * Start sync worker: pull from server on startup, push queue periodically.
  */
 export function startSyncWorker(): () => void {
-  // Pull data from server on first load
+  // Pull data from server on first load, and immediately flush any pending queue
   if (navigator.onLine) {
     pullFromServer().catch(console.error);
+    processQueue().catch(console.error);
   }
 
   const interval = setInterval(() => {

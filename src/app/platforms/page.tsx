@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
+import { processQueue } from "@/lib/sync";
 
 export default function PlatformsPage() {
   // Garden form
@@ -31,14 +32,26 @@ export default function PlatformsPage() {
     });
     setGardenName("");
     setGardenMsg(`✅ Đã thêm vườn: ${garden.name}`);
+    processQueue().catch(console.error);
   }
 
   async function handleDeleteGarden(id: string) {
-    // Delete all platforms and their plant_locations
+    // Delete all platforms and their plant_locations locally + queue sync
     const pts = (platforms ?? []).filter((p) => p.garden_id === id);
     for (const p of pts) {
-      await db.plantLocations.where("platform_id").equals(p.id).delete();
+      const locs = await db.plantLocations.where("platform_id").equals(p.id).toArray();
+      for (const loc of locs) {
+        await db.plantLocations.delete(loc.id);
+        await db.syncQueue.add({
+          id: uuidv4(), type: "DELETE", entity: "plant_location",
+          payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: Date.now(),
+        });
+      }
       await db.platforms.delete(p.id);
+      await db.syncQueue.add({
+        id: uuidv4(), type: "DELETE", entity: "platform",
+        payload: { id: p.id }, status: "pending", retry_count: 0, created_at: Date.now(),
+      });
     }
     await db.gardens.delete(id);
     await db.syncQueue.add({
@@ -46,6 +59,7 @@ export default function PlatformsPage() {
       payload: { id }, status: "pending", retry_count: 0, created_at: Date.now(),
     });
     setGardenMsg("🗑️ Đã xoá vườn");
+    processQueue().catch(console.error);
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -68,16 +82,25 @@ export default function PlatformsPage() {
     });
     setFloor(""); setName(""); setCapacity("");
     setMsg(`✅ Đã thêm: ${platform.name}`);
+    processQueue().catch(console.error);
   }
 
   async function handleDelete(id: string) {
+    const locs = await db.plantLocations.where("platform_id").equals(id).toArray();
+    for (const loc of locs) {
+      await db.plantLocations.delete(loc.id);
+      await db.syncQueue.add({
+        id: uuidv4(), type: "DELETE", entity: "plant_location",
+        payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+    }
     await db.platforms.delete(id);
-    await db.plantLocations.where("platform_id").equals(id).delete();
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "platform",
       payload: { id }, status: "pending", retry_count: 0, created_at: Date.now(),
     });
     setMsg("🗑️ Đã xoá sàn");
+    processQueue().catch(console.error);
   }
 
 

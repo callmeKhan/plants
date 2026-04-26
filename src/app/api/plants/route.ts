@@ -1,43 +1,16 @@
 import { NextResponse } from "next/server";
-import { isSheetsConfigured, readSheet, appendRow } from "@/lib/sheets";
+import { supabase } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
-// GET /api/plants — list all plants from Google Sheets
+// GET /api/plants
 export async function GET() {
-  if (!isSheetsConfigured()) {
-    return NextResponse.json(
-      { error: "Google Sheets not configured. Using offline mode." },
-      { status: 503 }
-    );
-  }
-
-  try {
-    const rows = await readSheet("plants");
-    // First row is header
-    const plants = rows.slice(1).map((row) => ({
-      id: row[0],
-      name: row[1],
-      total_quantity: Number(row[2]),
-      image_url: row[3] || "",
-    }));
-    return NextResponse.json(plants);
-  } catch (e) {
-    return NextResponse.json(
-      { error: `Failed to read plants: ${e}` },
-      { status: 500 }
-    );
-  }
+  const { data, error } = await supabase.from("plants").select("*");
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
 }
 
-// POST /api/plants — create a new plant
+// POST /api/plants
 export async function POST(request: Request) {
-  if (!isSheetsConfigured()) {
-    return NextResponse.json(
-      { error: "Google Sheets not configured. Using offline mode." },
-      { status: 503 }
-    );
-  }
-
   try {
     const body = await request.json();
     const { name, total_quantity, image_url } = body;
@@ -50,17 +23,50 @@ export async function POST(request: Request) {
     }
 
     const id = body.id || uuidv4();
-    await appendRow("plants", [
-      id,
-      name,
-      String(total_quantity),
-      image_url || "",
-    ]);
-    return NextResponse.json({ id, name, total_quantity, image_url });
+    const { data, error } = await supabase
+      .from("plants")
+      .insert([{ id, name, total_quantity, image_url: image_url || "" }])
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data);
   } catch (e) {
-    return NextResponse.json(
-      { error: `Failed to create plant: ${e}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `Failed: ${e}` }, { status: 500 });
   }
+}
+
+// PUT /api/plants?id=xxx — update a plant
+export async function PUT(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+
+    const body = await request.json();
+    const { name, total_quantity, image_url } = body;
+
+    const { data, error } = await supabase
+      .from("plants")
+      .update({ name, total_quantity, image_url })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data);
+  } catch (e) {
+    return NextResponse.json({ error: `Failed: ${e}` }, { status: 500 });
+  }
+}
+
+// DELETE /api/plants?id=xxx
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+
+  const { error } = await supabase.from("plants").delete().eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ deleted: id });
 }
