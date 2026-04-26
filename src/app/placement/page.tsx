@@ -90,7 +90,7 @@ export default function PlacementPage() {
       });
     } else {
       const id = uuidv4();
-      const loc = { id, plant_id: plantId, platform_id: platformId, quantity: qty };
+      const loc = { id, plant_id: plantId, platform_id: platformId, quantity: qty, pot_size: 0, planted_date: "" };
       await db.plantLocations.add(loc);
       await db.syncQueue.add({
         id: uuidv4(),
@@ -181,10 +181,9 @@ export default function PlacementPage() {
             {filteredPlatforms?.map((p) => {
               const free = p.capacity -
                 (locations?.filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0) ?? 0);
-              const sideLabel = p.side === "left" ? "Trái" : "Phải";
               const label = filterFloor
-                ? `${sideLabel} - ${p.name} (${free})`
-                : `Tầng ${p.floor} - ${sideLabel} - ${p.name} (${free})`;
+                ? `${p.name} (${free})`
+                : `Tầng ${p.floor} - ${p.name} (${free})`;
               return (
                 <option key={p.id} value={p.id}>{label}</option>
               );

@@ -1,5 +1,10 @@
 import Dexie, { type EntityTable } from "dexie";
 
+export interface Garden {
+  id: string;
+  name: string;
+}
+
 export interface Plant {
   id: string;
   name: string;
@@ -9,8 +14,8 @@ export interface Plant {
 
 export interface Platform {
   id: string;
+  garden_id: string;
   floor: number;
-  side: "left" | "right";
   name: string;
   capacity: number;
 }
@@ -20,12 +25,14 @@ export interface PlantLocation {
   plant_id: string;
   platform_id: string;
   quantity: number;
+  pot_size: number;      // 14 | 16 | 21
+  planted_date: string;  // "YYYY-MM-DD"
 }
 
 export interface SyncQueueItem {
   id: string;
   type: "CREATE" | "UPDATE" | "DELETE";
-  entity: "plant" | "platform" | "plant_location";
+  entity: "plant" | "platform" | "plant_location" | "garden";
   payload: Record<string, unknown>;
   status: "pending" | "syncing" | "failed";
   retry_count: number;
@@ -33,15 +40,17 @@ export interface SyncQueueItem {
 }
 
 const db = new Dexie("PlantManagerDB") as Dexie & {
+  gardens: EntityTable<Garden, "id">;
   plants: EntityTable<Plant, "id">;
   platforms: EntityTable<Platform, "id">;
   plantLocations: EntityTable<PlantLocation, "id">;
   syncQueue: EntityTable<SyncQueueItem, "id">;
 };
 
-db.version(1).stores({
+db.version(3).stores({
+  gardens: "id, name",
   plants: "id, name",
-  platforms: "id, floor, side",
+  platforms: "id, garden_id, floor",
   plantLocations: "id, plant_id, platform_id",
   syncQueue: "id, status, entity",
 });
