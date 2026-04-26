@@ -15,19 +15,31 @@ export async function pullFromServer(): Promise<void> {
 
     if (gardensRes.ok) {
       const gardens: Garden[] = await gardensRes.json();
-      await db.gardens.bulkPut(gardens);
+      await db.transaction("rw", db.gardens, async () => {
+        await db.gardens.clear();
+        await db.gardens.bulkPut(gardens);
+      });
     }
     if (plantsRes.ok) {
       const plants: Plant[] = await plantsRes.json();
-      await db.plants.bulkPut(plants);
+      await db.transaction("rw", db.plants, async () => {
+        await db.plants.clear();
+        await db.plants.bulkPut(plants);
+      });
     }
     if (platformsRes.ok) {
       const platforms: Platform[] = await platformsRes.json();
-      await db.platforms.bulkPut(platforms);
+      await db.transaction("rw", db.platforms, async () => {
+        await db.platforms.clear();
+        await db.platforms.bulkPut(platforms);
+      });
     }
     if (locationsRes.ok) {
       const locations: PlantLocation[] = await locationsRes.json();
-      await db.plantLocations.bulkPut(locations);
+      await db.transaction("rw", db.plantLocations, async () => {
+        await db.plantLocations.clear();
+        await db.plantLocations.bulkPut(locations);
+      });
     }
   } catch {
     console.log("Pull from server skipped (offline or error)");

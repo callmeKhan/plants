@@ -341,3 +341,36 @@ Một feature hoàn thành khi:
 3. Luôn update sync_queue nếu offline
 4. Giữ idempotency cho mọi write API
 5. Ưu tiên backward compatibility
+
+## Supabase
+
+```sql
+create table if not exists plants (
+  id text primary key,
+  name text not null,
+  total_quantity integer not null default 0,
+  image_url text default ''
+);
+
+create table if not exists platforms (
+  id text primary key,
+  garden_id text,
+  floor integer not null,
+  name text not null,
+  capacity integer not null default 0
+);
+
+create table if not exists plant_locations (
+  id text primary key,
+  plant_id text references plants(id) on delete cascade,
+  platform_id text references platforms(id) on delete cascade,
+  quantity integer not null,
+  pot_size integer default 14,
+  planted_date text default ''
+);
+
+create table if not exists gardens (
+  id text primary key,
+  name text not null
+);
+```

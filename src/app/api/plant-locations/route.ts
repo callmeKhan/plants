@@ -22,12 +22,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if location already exists for same plant+platform → merge quantity
+    // Merge only if same plant + platform + pot_size + planted_date
     const { data: existing } = await supabase
       .from("plant_locations")
       .select("id, quantity")
       .eq("plant_id", plant_id)
       .eq("platform_id", platform_id)
+      .eq("pot_size", pot_size || 14)
+      .eq("planted_date", planted_date || "")
       .maybeSingle();
 
     if (existing) {
