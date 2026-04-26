@@ -20,7 +20,6 @@ export default function Dashboard() {
 
   const plantCount = useLiveQuery(() => db.plants.count(), [], 0);
   const platformCount = useLiveQuery(() => db.platforms.count(), [], 0);
-  const locationCount = useLiveQuery(() => db.plantLocations.count(), [], 0);
   const pendingSync = useLiveQuery(
     () => db.syncQueue.where("status").equals("pending").count(),
     [],

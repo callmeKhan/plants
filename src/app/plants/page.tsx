@@ -177,6 +177,7 @@ export default function PlantsPage() {
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "plant_location",
       payload: { id: batchId } as Record<string, unknown>,
+      // eslint-disable-next-line react-hooks/purity
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
     const plant = plants?.find((p) => p.id === plantId);
@@ -186,6 +187,7 @@ export default function PlantsPage() {
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",
         payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
+        // eslint-disable-next-line react-hooks/purity
         status: "pending", retry_count: 0, created_at: Date.now(),
       });
     }
@@ -293,36 +295,37 @@ export default function PlantsPage() {
           />
         </div>
 
-        {/* Garden filter */}
-        <select
-          className="border rounded w-full px-3 py-2 text-sm"
-          value={filterGarden}
-          onChange={(e) => { setFilterGarden(e.target.value); setFilterFloor(""); setPlatformId(""); }}
-        >
-          <option value="">-- Chọn vườn --</option>
-          {gardens?.map((g) => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
+        
 
         {/* Floor filter */}
         <div className="flex gap-2">
+          {/* Garden filter */}
           <select
-            className="border rounded w-1/3 px-3 py-2 text-sm"
+            className="border rounded w-1/4 px-3 py-2 text-sm"
+            value={filterGarden}
+            onChange={(e) => { setFilterGarden(e.target.value); setFilterFloor(""); setPlatformId(""); }}
+          >
+            <option value="">- Vườn -</option>
+            {gardens?.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+          <select
+            className="border rounded w-1/4 px-3 py-2 text-sm"
             value={filterFloor}
             onChange={(e) => { setFilterFloor(e.target.value); setPlatformId(""); }}
           >
-            <option value="">Tất cả tầng</option>
+            <option value="">- Tầng -</option>
             {floorsInGarden.map((f) => (
               <option key={f} value={f}>Tầng {f}</option>
             ))}
           </select>
           <select
-            className="border rounded w-2/3 px-3 py-2 text-sm"
+            className="border rounded w-2/4 px-3 py-2 text-sm"
             value={platformId}
             onChange={(e) => setPlatformId(e.target.value)}
           >
-            <option value="">-- Chọn sàn --</option>
+            <option value="">- Sàn -</option>
             {filteredPlatforms?.map((p) => {
               const free = p.capacity -
                 ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
@@ -491,7 +494,7 @@ export default function PlantsPage() {
 
       {/* Confirm modal */}
       {confirmModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-xs">
             <p className="text-sm text-gray-800 mb-5 text-center">{confirmModal.message}</p>
             <div className="flex gap-3">

@@ -46,26 +46,43 @@ export default function PlatformsPage() {
 
   async function doDeleteGarden(id: string) {
     const pts = (platforms ?? []).filter((p) => p.garden_id === id);
+    const deletedPlantIds = new Set<string>();
     for (const p of pts) {
       const locs = await db.plantLocations.where("platform_id").equals(p.id).toArray();
       for (const loc of locs) {
+        deletedPlantIds.add(loc.plant_id);
         await db.plantLocations.delete(loc.id);
         await db.syncQueue.add({
           id: uuidv4(), type: "DELETE", entity: "plant_location",
+          // eslint-disable-next-line react-hooks/purity
           payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: Date.now(),
         });
       }
       await db.platforms.delete(p.id);
       await db.syncQueue.add({
         id: uuidv4(), type: "DELETE", entity: "platform",
+        // eslint-disable-next-line react-hooks/purity
         payload: { id: p.id }, status: "pending", retry_count: 0, created_at: Date.now(),
       });
     }
     await db.gardens.delete(id);
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "garden",
+      // eslint-disable-next-line react-hooks/purity
       payload: { id }, status: "pending", retry_count: 0, created_at: Date.now(),
     });
+    // Delete plants that have no remaining locations
+    for (const plantId of deletedPlantIds) {
+      const remaining = await db.plantLocations.where("plant_id").equals(plantId).count();
+      if (remaining === 0) {
+        await db.plants.delete(plantId);
+        await db.syncQueue.add({
+          id: uuidv4(), type: "DELETE", entity: "plant",
+          // eslint-disable-next-line react-hooks/purity
+          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: Date.now(),
+        });
+      }
+    }
     setGardenMsg("🗑️ Đã xoá vườn");
     processQueue().catch(console.error);
   }
@@ -106,18 +123,33 @@ export default function PlatformsPage() {
 
   async function doDeletePlatform(id: string) {
     const locs = await db.plantLocations.where("platform_id").equals(id).toArray();
+    const deletedPlantIds = new Set(locs.map((l) => l.plant_id));
     for (const loc of locs) {
       await db.plantLocations.delete(loc.id);
       await db.syncQueue.add({
         id: uuidv4(), type: "DELETE", entity: "plant_location",
+        // eslint-disable-next-line react-hooks/purity
         payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: Date.now(),
       });
     }
     await db.platforms.delete(id);
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "platform",
+      // eslint-disable-next-line react-hooks/purity
       payload: { id }, status: "pending", retry_count: 0, created_at: Date.now(),
     });
+    // Delete plants that have no remaining locations
+    for (const plantId of deletedPlantIds) {
+      const remaining = await db.plantLocations.where("plant_id").equals(plantId).count();
+      if (remaining === 0) {
+        await db.plants.delete(plantId);
+        await db.syncQueue.add({
+          id: uuidv4(), type: "DELETE", entity: "plant",
+          // eslint-disable-next-line react-hooks/purity
+          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: Date.now(),
+        });
+      }
+    }
     setMsg("🗑️ Đã xoá sàn");
     processQueue().catch(console.error);
   }
@@ -269,7 +301,7 @@ export default function PlatformsPage() {
 
       {/* Confirm modal */}
       {confirmModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-xs">
             <p className="text-sm text-gray-800 mb-5 text-center whitespace-pre-line">{confirmModal.message}</p>
             <div className="flex gap-3">
