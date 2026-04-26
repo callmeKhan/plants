@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 
+type ConfirmModal = { message: string; onConfirm: () => void } | null;
+
 export default function PlatformsPage() {
   // Garden form
   const [gardenName, setGardenName] = useState("");
@@ -18,8 +20,15 @@ export default function PlatformsPage() {
   const [capacity, setCapacity] = useState("");
   const [msg, setMsg] = useState("");
 
+  const [confirmModal, setConfirmModal] = useState<ConfirmModal>(null);
+
+  function confirm(message: string, onConfirm: () => void) {
+    setConfirmModal({ message, onConfirm });
+  }
+
   const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
+  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
 
   async function handleAddGarden(e: React.FormEvent) {
     e.preventDefault();
@@ -35,8 +44,7 @@ export default function PlatformsPage() {
     processQueue().catch(console.error);
   }
 
-  async function handleDeleteGarden(id: string) {
-    // Delete all platforms and their plant_locations locally + queue sync
+  async function doDeleteGarden(id: string) {
     const pts = (platforms ?? []).filter((p) => p.garden_id === id);
     for (const p of pts) {
       const locs = await db.plantLocations.where("platform_id").equals(p.id).toArray();
@@ -62,6 +70,17 @@ export default function PlatformsPage() {
     processQueue().catch(console.error);
   }
 
+  function handleDeleteGarden(id: string, gardenName: string) {
+    const gardenPlatformIds = (platforms ?? []).filter((p) => p.garden_id === id).map((p) => p.id);
+    const plantCount = (locations ?? [])
+      .filter((l) => gardenPlatformIds.includes(l.platform_id))
+      .reduce((s, l) => s + l.quantity, 0);
+    confirm(
+      `Xoá vườn "${gardenName}"?\nHiện có ${plantCount} cây đang được trồng trong vườn này.`,
+      () => doDeleteGarden(id)
+    );
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!gardenId || !floor || !name || !capacity) {
@@ -85,7 +104,7 @@ export default function PlatformsPage() {
     processQueue().catch(console.error);
   }
 
-  async function handleDelete(id: string) {
+  async function doDeletePlatform(id: string) {
     const locs = await db.plantLocations.where("platform_id").equals(id).toArray();
     for (const loc of locs) {
       await db.plantLocations.delete(loc.id);
@@ -101,6 +120,16 @@ export default function PlatformsPage() {
     });
     setMsg("🗑️ Đã xoá sàn");
     processQueue().catch(console.error);
+  }
+
+  function handleDelete(id: string, platformName: string) {
+    const plantCount = (locations ?? [])
+      .filter((l) => l.platform_id === id)
+      .reduce((s, l) => s + l.quantity, 0);
+    confirm(
+      `Xoá sàn "${platformName}"?\nHiện có ${plantCount} cây đang được trồng trên sàn này.`,
+      () => doDeletePlatform(id)
+    );
   }
 
 
@@ -124,7 +153,7 @@ export default function PlatformsPage() {
         {gardens?.map((g) => (
           <li key={g.id} className="border rounded px-3 py-2 flex justify-between items-center">
             <span className="font-medium">{g.name}</span>
-            <button onClick={() => handleDeleteGarden(g.id)} className="text-red-500 text-xs ml-2">Xoá</button>
+            <button onClick={() => handleDeleteGarden(g.id, g.name)} className="text-red-500 text-xs ml-2">Xoá</button>
           </li>
         ))}
       </ul>
@@ -191,7 +220,7 @@ export default function PlatformsPage() {
                             <span>
                               <strong>{p.name}</strong> — Chứa: {p.capacity}
                             </span>
-                            <button onClick={() => handleDelete(p.id)} className="text-red-500 text-xs ml-2">Xoá</button>
+                            <button onClick={() => handleDelete(p.id, p.name)} className="text-red-500 text-xs ml-2">Xoá</button>
                           </li>
                         ))}
                       </ul>
@@ -225,7 +254,7 @@ export default function PlatformsPage() {
                             <span>
                               <strong>{p.name}</strong> — Chứa: {p.capacity}
                             </span>
-                            <button onClick={() => handleDelete(p.id)} className="text-red-500 text-xs ml-2">Xoá</button>
+                            <button onClick={() => handleDelete(p.id, p.name)} className="text-red-500 text-xs ml-2">Xoá</button>
                           </li>
                         ))}
                       </ul>
@@ -237,6 +266,29 @@ export default function PlatformsPage() {
           );
         })()}
       </div>
+
+      {/* Confirm modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-xs">
+            <p className="text-sm text-gray-800 mb-5 text-center whitespace-pre-line">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button
+                className="flex-1 border rounded-lg py-2 text-sm text-gray-600"
+                onClick={() => setConfirmModal(null)}
+              >
+                Huỷ
+              </button>
+              <button
+                className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium"
+                onClick={() => { confirmModal!.onConfirm(); setConfirmModal(null); }}
+              >
+                Xoá
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
