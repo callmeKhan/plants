@@ -13,7 +13,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { plant_id, platform_id, quantity, pot_size, planted_date } = body;
+    const { plant_id, platform_id, quantity, pot_size, planted_date, price } = body;
 
     if (!plant_id || !platform_id || quantity == null) {
       return NextResponse.json(
@@ -54,6 +54,7 @@ export async function POST(request: Request) {
         quantity,
         pot_size: pot_size || 14,
         planted_date: planted_date || "",
+        ...(price != null ? { price } : {}),
       }])
       .select()
       .single();
@@ -73,11 +74,11 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
-    const { quantity, pot_size, planted_date, platform_id, plant_id } = body;
+    const { quantity, pot_size, planted_date, platform_id, plant_id, price } = body;
 
     const { data, error } = await supabase
       .from("plant_locations")
-      .update({ quantity, pot_size, planted_date, platform_id, plant_id })
+      .update({ quantity, pot_size, planted_date, platform_id, plant_id, price: price ?? null })
       .eq("id", id)
       .select()
       .single();

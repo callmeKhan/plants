@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trees, LayoutGrid, Trash2, AlertCircle, Plus, ChevronDown, X, Package, Calendar, Leaf } from "lucide-react";
+import { Trees, LayoutGrid, Trash2, AlertCircle, Plus, ChevronDown, X, Package, Calendar, Leaf, Pencil, Search } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 
 type ConfirmModal = { message: string; onConfirm: () => void } | null;
@@ -34,6 +34,13 @@ export default function PlatformsPage() {
 
   const [confirmModal, setConfirmModal] = useState<ConfirmModal>(null);
   const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
+
+  // Move batch state
+  const [movingLocId, setMovingLocId] = useState<string | null>(null);
+  const [moveTargetPlatformId, setMoveTargetPlatformId] = useState("");
+  const [moveQty, setMoveQty] = useState("");
+  const [movePlatformSearch, setMovePlatformSearch] = useState("");
+  const [showMovePlatformDropdown, setShowMovePlatformDropdown] = useState(false);
 
   function confirm(message: string, onConfirm: () => void) {
     setConfirmModal({ message, onConfirm });
@@ -103,7 +110,7 @@ export default function PlatformsPage() {
       .filter((l) => gardenPlatformIds.includes(l.platform_id))
       .reduce((s, l) => s + l.quantity, 0);
     confirm(
-      `Xoá vườn "${gardenName}"?\nHiện có ${plantCount} khay đang được trồng trong vườn này.`,
+      `Xoá vườn "${gardenName}"?\nHiện có ${plantCount} tấm đang được trồng trong vườn này.`,
       () => doDeleteGarden(id)
     );
   }
@@ -163,9 +170,68 @@ export default function PlatformsPage() {
       .filter((l) => l.platform_id === id)
       .reduce((s, l) => s + l.quantity, 0);
     confirm(
-      `Xoá sàn "${platformName}"?\nHiện có ${plantCount} khay đang được trồng trên sàn này.`,
+      `Xoá sàn "${platformName}"?\nHiện có ${plantCount} tấm đang được trồng trên sàn này.`,
       () => doDeletePlatform(id)
     );
+  }
+
+  async function doMoveBatch(locId: string) {
+    if (!moveTargetPlatformId) return;
+    const loc = (locations ?? []).find((l) => l.id === locId);
+    if (!loc) return;
+    const targetPlatform = platforms?.find((p) => p.id === moveTargetPlatformId);
+    if (!targetPlatform) return;
+
+    const qty = Number(moveQty) || loc.quantity;
+
+    const usedOnTarget = (locations ?? [])
+      .filter((l) => l.platform_id === moveTargetPlatformId && l.id !== locId)
+      .reduce((s, l) => s + l.quantity, 0);
+    const freeOnTarget = targetPlatform.capacity - usedOnTarget;
+
+    if (qty > freeOnTarget) {
+      setToast({
+        text: `Không đủ chỗ: cần ${qty} tấm nhưng sàn chỉ còn ${freeOnTarget}`,
+        type: "error",
+      });
+      return;
+    }
+
+    if (qty === loc.quantity) {
+      // Chuyển toàn bộ: đổi platform_id bậch gốc
+      await db.plantLocations.update(locId, { platform_id: moveTargetPlatformId });
+      await db.syncQueue.add({
+        id: uuidv4(), type: "UPDATE", entity: "plant_location",
+        payload: { ...loc, platform_id: moveTargetPlatformId } as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+    } else {
+      // Chuyển một phần: giảm qty bậch gốc + tạo bậch mới ở đích
+      const newOrigQty = loc.quantity - qty;
+      await db.plantLocations.update(locId, { quantity: newOrigQty });
+      await db.syncQueue.add({
+        id: uuidv4(), type: "UPDATE", entity: "plant_location",
+        payload: { ...loc, quantity: newOrigQty } as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+      const newLoc = {
+        id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
+        quantity: qty, pot_size: loc.pot_size, planted_date: loc.planted_date,
+      };
+      await db.plantLocations.add(newLoc);
+      await db.syncQueue.add({
+        id: uuidv4(), type: "CREATE", entity: "plant_location",
+        payload: newLoc as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+    }
+
+    setMovingLocId(null);
+    setMoveTargetPlatformId("");
+    setMoveQty("");
+    setMovePlatformSearch("");
+    setToast({ text: `Đã chuyển ${qty} tấm thành công!`, type: "success" });
+    processQueue().catch(console.error);
   }
 
   return (
@@ -201,7 +267,7 @@ export default function PlatformsPage() {
               />
               <button
                 type="submit"
-                className="justify-center w-1/4 h-10 px-4 rounded-xl text-white text-sm font-semibold flex items-center gap-1 shrink-0 hover:opacity-90 active:scale-[0.97] transition-all"
+                className="justify-center w-1/4 h-8 px-4 rounded-xl text-white text-sm font-semibold flex items-center gap-1 shrink-0 hover:opacity-90 active:scale-[0.97] transition-all"
                 style={{ backgroundColor: "#059669" }}
               >
                 <Plus className="w-4 h-4" />
@@ -223,7 +289,7 @@ export default function PlatformsPage() {
                           <p className="font-semibold text-gray-900 text-sm whitespace-nowrap">{g.name}</p>
                           <div className="flex gap-1.5 mt-0.5">
                             <Badge variant="secondary">{platformCount} sàn</Badge>
-                            <Badge variant="default">{plantCount} khay</Badge>
+                            <Badge variant="default">{plantCount} tấm</Badge>
                           </div>
                         </div>
                         <button
@@ -276,17 +342,18 @@ export default function PlatformsPage() {
                     ))}
                   </Select>
                   <Input
-                    className="w-[65px]"
+                    className="w-[65px] h-10"
                     placeholder="Tầng"
                     type="number"
                     value={floor}
                     onChange={(e) => setFloor(e.target.value)}
                   />
                   <Input
-                    className="w-[120px]"
+                    className="w-[120px] h-10"
                     placeholder="📦 Sức chứa"
                     type="number"
                     min={0}
+                    step="any"
                     value={capacity}
                     onChange={(e) => setCapacity(e.target.value)}
                   />
@@ -453,7 +520,7 @@ export default function PlatformsPage() {
               </div>
 
               {/* Scrollable content */}
-              <div className="overflow-y-auto px-5 pb-6 space-y-4 pt-4">
+              <div className="h-full overflow-y-auto px-5 pb-6 space-y-4 pt-4">
 
                 {/* Capacity stats */}
                 <div className="rounded-2xl p-4 space-y-2" style={{ backgroundColor: "#eff6ff" }}>
@@ -468,7 +535,7 @@ export default function PlatformsPage() {
                       style={{ width: `${pct}%`, backgroundColor: pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#2563eb" }}
                     />
                   </div>
-                  <p className="text-xs text-blue-400">Còn trống: {free} khay</p>
+                  <p className="text-xs text-blue-400">Còn trống: {free} tấm</p>
                 </div>
 
                 {/* Plants list */}
@@ -483,28 +550,156 @@ export default function PlatformsPage() {
                     <div className="space-y-2">
                       {platformLocs.map((loc) => {
                         const plant = plants?.find((p) => p.id === loc.plant_id);
+                        const isMoving = movingLocId === loc.id;
                         return (
-                          <div key={loc.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
-                            <div className="w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={plant?.image_url || PLACEHOLDER_IMAGE}
-                                alt={plant?.name ?? ""}
-                                className="w-full h-full object-cover"
-                                onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
-                              />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
-                              <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
-                                <Package className="w-3 h-3" />
-                                <span>{loc.quantity} khay · chậu {loc.pot_size}</span>
-                                <span>·</span>
-                                <Calendar className="w-3 h-3" />
-                                <span>{fmtDate(loc.planted_date)}</span>
+                          <div key={loc.id} className="bg-gray-50 rounded-xl px-3 py-2.5 space-y-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={plant?.image_url || PLACEHOLDER_IMAGE}
+                                  alt={plant?.name ?? ""}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
+                                />
                               </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
+                                <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                                  <Package className="w-3 h-3" />
+                                  <span>{loc.quantity} tấm · chậu {loc.pot_size}</span>
+                                  <span>·</span>
+                                  <Calendar className="w-3 h-3" />
+                                  <span>{fmtDate(loc.planted_date)}</span>
+                                </div>
+                              </div>
+                              <button
+                                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                                style={{ backgroundColor: isMoving ? "#dbeafe" : "#fff7ed" }}
+                                onClick={() => {
+                                  if (isMoving) {
+                                    setMovingLocId(null);
+                                    setMoveTargetPlatformId("");
+                                    setMoveQty("");
+                                    setMovePlatformSearch("");
+                                  } else {
+                                    setMovingLocId(loc.id);
+                                    setMoveTargetPlatformId("");
+                                    setMoveQty(String(loc.quantity));
+                                    setMovePlatformSearch("");
+                                  }
+                                }}
+                              >
+                                <Pencil className="w-4 h-4" style={{ color: isMoving ? "#2563eb" : "#f97316" }} />
+                              </button>
                             </div>
-                            <Badge variant="default">×{loc.quantity}</Badge>
+
+                            {/* Inline move UI */}
+                            {isMoving && (
+                              <div className="space-y-2">
+                                {/* Quantity input */}
+                                <div className="flex items-center gap-2">
+                                  <label className="text-xs text-gray-500 shrink-0">Số lượng chuyển:</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={loc.quantity}
+                                    className="w-12 h-8 border border-blue-200 rounded-lg px-2 text-sm bg-white outline-none text-center"
+                                    value={moveQty}
+                                    onChange={(e) => {
+                                      const v = Math.min(Number(e.target.value), loc.quantity);
+                                      setMoveQty(String(v > 0 ? v : ""));
+                                    }}
+                                  />
+                                  <span className="text-xs text-gray-400">/ {loc.quantity} tấm</span>
+                                </div>
+                                <div className="relative">
+                                  <div
+                                    className="flex items-center border border-blue-200 rounded-lg bg-white px-2 h-9 gap-1 cursor-text"
+                                    onClick={() => setShowMovePlatformDropdown(true)}
+                                  >
+                                    <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                    <input
+                                      className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0"
+                                      placeholder={moveTargetPlatformId
+                                        ? (() => {
+                                            const p = platforms?.find((p) => p.id === moveTargetPlatformId);
+                                            const g = gardens?.find((g) => g.id === p?.garden_id);
+                                            return p ? `${g ? g.name + " | " : ""}Tầng ${p.floor} - ${p.name}` : "";
+                                          })()
+                                        : "— Chọn sàn đích —"}
+                                      value={movePlatformSearch}
+                                      onChange={(e) => { setMovePlatformSearch(e.target.value); setShowMovePlatformDropdown(true); }}
+                                      onFocus={() => setShowMovePlatformDropdown(true)}
+                                      onBlur={() => setTimeout(() => setShowMovePlatformDropdown(false), 150)}
+                                    />
+                                    {moveTargetPlatformId && (
+                                      <button
+                                        type="button"
+                                        className="shrink-0 text-gray-400 hover:text-gray-600"
+                                        onMouseDown={(e) => { e.preventDefault(); setMoveTargetPlatformId(""); setMovePlatformSearch(""); }}
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {showMovePlatformDropdown && (
+                                    <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                                      {(platforms ?? [])
+                                        .filter((p) => p.id !== detailPlatformId)
+                                        .filter((p) => {
+                                          if (!movePlatformSearch.trim()) return true;
+                                          const q = movePlatformSearch.toLowerCase();
+                                          const g = gardens?.find((g) => g.id === p.garden_id);
+                                          const freeSlots = p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0);
+                                          return `${g?.name ?? ""} tầng ${p.floor} ${p.name} ${freeSlots}`.toLowerCase().includes(q);
+                                        })
+                                        .map((p) => {
+                                          const g = gardens?.find((g) => g.id === p.garden_id);
+                                          const freeSlots = p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0);
+                                          const label = `${g ? g.name + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${freeSlots})`;
+                                          return (
+                                            <li
+                                              key={p.id}
+                                              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${
+                                                moveTargetPlatformId === p.id ? "bg-blue-50 font-medium text-blue-700" : "text-gray-800"
+                                              } ${freeSlots < loc.quantity ? "opacity-50" : ""}`}
+                                              onMouseDown={() => { setMoveTargetPlatformId(p.id); setMovePlatformSearch(""); setShowMovePlatformDropdown(false); }}
+                                            >
+                                              {label}
+                                              {freeSlots < loc.quantity && <span className="ml-1 text-red-400 text-xs">(không đủ)</span>}
+                                            </li>
+                                          );
+                                        })}
+                                    </ul>
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    className="flex-1 h-9 rounded-lg text-sm font-semibold text-white"
+                                    style={{ backgroundColor: moveTargetPlatformId ? "#2563eb" : "#93c5fd" }}
+                                    disabled={!moveTargetPlatformId}
+                                    onClick={() => {
+                                      const target = platforms?.find((p) => p.id === moveTargetPlatformId);
+                                      const g = gardens?.find((g) => g.id === target?.garden_id);
+                                      const targetLabel = target ? `${g ? g.name + " | " : ""}Tầng ${target.floor} - ${target.name}` : "";
+                                      confirm(
+                                        `Chuyển ${moveQty} tấm "${plant?.name ?? ""}" sang ${targetLabel}?`,
+                                        () => doMoveBatch(loc.id)
+                                      );
+                                    }}
+                                  >
+                                    Xác nhận chuyển
+                                  </button>
+                                  <button
+                                    className="flex-1 h-9 rounded-lg text-sm border border-gray-200 text-gray-600"
+                                    onClick={() => { setMovingLocId(null); setMoveTargetPlatformId(""); setMovePlatformSearch(""); }}
+                                  >
+                                    Huỷ
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -537,10 +732,10 @@ export default function PlatformsPage() {
               </button>
               <button
                 className="flex-1 h-11 rounded-xl text-sm text-white font-semibold"
-                style={{ backgroundColor: "#dc2626" }}
+                style={{ backgroundColor: "#2563eb" }}
                 onClick={() => { confirmModal!.onConfirm(); setConfirmModal(null); }}
               >
-                Xoá
+                Xác nhận
               </button>
             </div>
           </div>

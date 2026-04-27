@@ -46,6 +46,7 @@ export default function PlantsPage() {
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [quantity, setQuantity] = useState("");
+  const [price, setPrice] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [potSize, setPotSize] = useState<number>(16);
   const [plantedDate, setPlantedDate] = useState(todayStr());
@@ -64,6 +65,7 @@ export default function PlantsPage() {
 
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState("");
+  const [editPrice, setEditPrice] = useState("");
   const [editPotSize, setEditPotSize] = useState<number>(16);
   const [editDate, setEditDate] = useState("");
   const [editPlatformId, setEditPlatformId] = useState("");
@@ -137,6 +139,7 @@ export default function PlantsPage() {
     const loc = {
       id: uuidv4(), plant_id: plant.id, platform_id: platformId,
       quantity: qty, pot_size: potSize, planted_date: plantedDate,
+      ...(price ? { price: Number(price) } : {}),
     };
     await db.plantLocations.add(loc);
     await db.syncQueue.add({
@@ -145,7 +148,7 @@ export default function PlantsPage() {
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
 
-    setName(""); setSelectedPlantId(null); setQuantity("");
+    setName(""); setSelectedPlantId(null); setQuantity(""); setPrice("");
     setImageUrl(""); setPlatformId(""); setPlantedDate(todayStr());
     setMsg({ text: "Đã lưu cây và vị trí thành công!", type: "success" });
     processQueue().catch(console.error);
@@ -161,7 +164,7 @@ export default function PlantsPage() {
     const platform = platforms?.find((p) => p.id === platformId);
     const gardenOfPlatform = gardens?.find((g) => g.id === platform?.garden_id);
     confirm(
-      `Thêm ${qty} khay "${name}" vào ${gardenOfPlatform ? gardenOfPlatform.name + " · " : ""}${platform ? `Tầng ${platform.floor} - ${platform.name}` : platformId}?`,
+      `Thêm ${qty} tấm "${name}" vào ${gardenOfPlatform ? gardenOfPlatform.name + " · " : ""}${platform ? `Tầng ${platform.floor} - ${platform.name}` : platformId}?`,
       doSubmit
     );
   }
@@ -218,9 +221,10 @@ export default function PlantsPage() {
     }
     processQueue().catch(console.error);
   }
-  function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string }) {
+  function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number }) {
     setEditingBatchId(b.id);
     setEditQty(String(b.quantity));
+    setEditPrice(b.price != null ? String(b.price) : "");
     setEditPotSize(b.pot_size);
     setEditDate(b.planted_date);
     setEditPlatformId(b.platform_id);
@@ -230,7 +234,10 @@ export default function PlantsPage() {
     const newQty = Number(editQty);
     if (!newQty || !editPlatformId) return;
 
-    const updates = { quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId };
+    const updates = {
+      quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId,
+      ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
+    };
     await db.plantLocations.update(batchId, updates);
 
     const batch = (locations ?? []).find((l) => l.id === batchId);
@@ -349,7 +356,7 @@ export default function PlantsPage() {
                 )}
               </div>
 
-              {/* Quantity + Image URL */}
+              {/* Quantity + Price + Image URL */}
               <div className="flex gap-2">
                 <Input
                   className="w-1/3"
@@ -359,7 +366,14 @@ export default function PlantsPage() {
                   onChange={(e) => setQuantity(e.target.value)}
                 />
                 <Input
-                  className="w-2/3"
+                  className="w-1/3"
+                  placeholder="💰 Giá tiền"
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+                <Input
+                  className="w-1/3"
                   placeholder="🖼 URL hình (tuỳ chọn)"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
@@ -378,7 +392,7 @@ export default function PlantsPage() {
                   ))}
                 </Select>
                 <Input
-                  className="w-2/3"
+                  className="w-2/3 h-10"
                   type="date"
                   value={plantedDate}
                   onChange={(e) => setPlantedDate(e.target.value)}
@@ -544,12 +558,12 @@ export default function PlantsPage() {
                       </div>
                       <div className="space-y-1">
                         {batches.map((b) => (
-                          <div key={b.id} className="text-xs text-gray-500 flex flex-wrap items-center gap-x-1 gap-y-0 border-b border-gray-200">
+                          <div key={b.id} className="text-xs text-gray-500 flex flex-wrap items-start gap-x-1 gap-y-0 border-b border-gray-200">
                             {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
-                            <span>{platformLabel(b.platform_id)}</span>
-                            <span className="text-gray-300">·</span>
-                            <span>{b.quantity} khay, chậu {b.pot_size}</span>
-                            <span className="text-gray-300">·</span>
+                            <div className="flex flex-col">
+                              <span>{platformLabelWithGarden(b.platform_id)}</span>
+                              <span>{b.quantity} tấm, chậu {b.pot_size}</span>
+                            </div>
                             <span className="text-gray-900 text-xs ml-auto">{fmtDate(b.planted_date)}</span>
                           </div>
                         ))}
@@ -648,13 +662,20 @@ export default function PlantsPage() {
                           <div className="flex gap-2">
                             <input
                               type="number"
-                              className="w-1/3 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
+                              className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
                               placeholder="SL"
                               value={editQty}
                               onChange={(e) => setEditQty(e.target.value)}
                             />
+                            <input
+                              type="number"
+                              className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
+                              placeholder="Giá"
+                              value={editPrice}
+                              onChange={(e) => setEditPrice(e.target.value)}
+                            />
                             <select
-                              className="w-1/3 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
+                              className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
                               value={editPotSize}
                               onChange={(e) => setEditPotSize(Number(e.target.value))}
                             >
@@ -662,7 +683,7 @@ export default function PlantsPage() {
                             </select>
                             <input
                               type="date"
-                              className="w-1/3 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
+                              className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
                               value={editDate}
                               onChange={(e) => setEditDate(e.target.value)}
                             />
@@ -723,7 +744,7 @@ export default function PlantsPage() {
                               className="flex-1 h-9 rounded-lg text-sm font-semibold text-white"
                               style={{ backgroundColor: "#059669" }}
                               onClick={() => confirm(
-                                `Cập nhật đợt này thành ${editQty} khay, chậu ${editPotSize}?`,
+                                `Cập nhật đợt này thành ${editQty} tấm, chậu ${editPotSize}?`,
                                 () => doUpdateBatch(b.id, b.quantity, b.plant_id)
                               )}
                             >
@@ -742,7 +763,12 @@ export default function PlantsPage() {
                           <div className="text-sm space-y-0.5 min-w-0">
                             <div className="flex items-center gap-1.5 text-gray-800 font-medium">
                               <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
-                              {b.quantity} khay · chậu {b.pot_size}
+                              {b.quantity} tấm · chậu {b.pot_size}
+                              {b.price != null && (
+                                <span className="ml-1 text-emerald-700 font-semibold text-xs">
+                                  · {b.price.toLocaleString("vi-VN")}₫
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-gray-500">
                               <MapPin className="w-3 h-3" />
@@ -764,7 +790,7 @@ export default function PlantsPage() {
                               className="ml-2 w-8 h-8 rounded-lg flex items-center justify-center text-red-500 shrink-0"
                               style={{ backgroundColor: "#fef2f2" }}
                               onClick={() => confirm(
-                                `Xoá đợt ${b.quantity} khay tại ${platformLabel(b.platform_id)}?`,
+                                `Xoá đợt ${b.quantity} tấm tại ${platformLabel(b.platform_id)}?`,
                                 () => doDeleteBatch(b.id, b.quantity, b.plant_id)
                               )}
                             >

@@ -27,6 +27,7 @@ export interface PlantLocation {
   quantity: number;
   pot_size: number;      // 14 | 16 | 21
   planted_date: string;  // "YYYY-MM-DD"
+  price?: number;        // giá mỗi batch
 }
 
 export interface SyncQueueItem {
@@ -48,6 +49,14 @@ const db = new Dexie("PlantManagerDB") as Dexie & {
 };
 
 db.version(3).stores({
+  gardens: "id, name",
+  plants: "id, name",
+  platforms: "id, garden_id, floor",
+  plantLocations: "id, plant_id, platform_id",
+  syncQueue: "id, status, entity",
+});
+
+db.version(4).stores({
   gardens: "id, name",
   plants: "id, name",
   platforms: "id, garden_id, floor",
