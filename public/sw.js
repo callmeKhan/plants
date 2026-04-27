@@ -1,6 +1,6 @@
-// Bump this version on every deploy to force SW update
-const CACHE_VERSION = "v4";
-const CACHE_NAME = `plant-manager-${CACHE_VERSION}`;
+// Cache version is injected via ?v= query param when registering (set in next.config.ts → NEXT_PUBLIC_BUILD_TIME)
+const swVersion = new URL(self.location.href).searchParams.get("v") || "v4";
+const CACHE_NAME = `plant-manager-${swVersion}`;
 
 // On install: skip waiting so the new SW takes over immediately
 self.addEventListener("install", () => {

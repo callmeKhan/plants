@@ -4,9 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const tabs = [
-  { href: "/", label: "🏠", title: "Home" },
-  { href: "/plants", label: "🌱", title: "Plants" },
-  { href: "/platforms", label: "📦", title: "Platforms" },
+  { href: "/plants", icon: "spa", title: "Hoa" },
+  { href: "/platforms", icon: "dataset", title: "Vườn" },
 ];
 
 export default function BottomNav() {
@@ -26,7 +25,7 @@ export default function BottomNav() {
                 : "text-gray-500"
             }`}
           >
-            <span className="text-xl">{tab.label}</span>
+            <span className="material-symbols-outlined text-2xl">{tab.icon}</span>
             <span>{tab.title}</span>
           </Link>
         );

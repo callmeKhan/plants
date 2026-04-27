@@ -22,6 +22,7 @@ import {
   MapPin,
   Calendar,
   Package,
+  Pencil,
 } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 
@@ -51,6 +52,8 @@ export default function PlantsPage() {
   const [filterGarden, setFilterGarden] = useState("");
   const [filterFloor, setFilterFloor] = useState("");
   const [platformId, setPlatformId] = useState("");
+  const [platformSearch, setPlatformSearch] = useState("");
+  const [showPlatformDropdown, setShowPlatformDropdown] = useState(false);
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [openForm, setOpenForm] = useState(false);
 
@@ -58,6 +61,14 @@ export default function PlantsPage() {
   const [editingImage, setEditingImage] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState("");
   const [confirmModal, setConfirmModal] = useState<ConfirmModal>(null);
+
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editPotSize, setEditPotSize] = useState<number>(16);
+  const [editDate, setEditDate] = useState("");
+  const [editPlatformId, setEditPlatformId] = useState("");
+  const [editPlatformSearch, setEditPlatformSearch] = useState("");
+  const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
 
   const plants = useLiveQuery(() => db.plants.toArray(), [], []);
   const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
@@ -150,7 +161,7 @@ export default function PlantsPage() {
     const platform = platforms?.find((p) => p.id === platformId);
     const gardenOfPlatform = gardens?.find((g) => g.id === platform?.garden_id);
     confirm(
-      `Thêm ${qty} cây "${name}" vào ${gardenOfPlatform ? gardenOfPlatform.name + " · " : ""}${platform ? `Tầng ${platform.floor} - ${platform.name}` : platformId}?`,
+      `Thêm ${qty} khay "${name}" vào ${gardenOfPlatform ? gardenOfPlatform.name + " · " : ""}${platform ? `Tầng ${platform.floor} - ${platform.name}` : platformId}?`,
       doSubmit
     );
   }
@@ -158,8 +169,13 @@ export default function PlantsPage() {
   function platformLabel(id: string) {
     const p = platforms?.find((p) => p.id === id);
     if (!p) return id;
-    const garden = gardens?.find((g) => g.id === p.garden_id);
-    return `${garden ? garden.name + " · " : ""}Tầng ${p.floor} · ${p.name}`;
+    return `Sàn ${p.name}`;
+  }
+
+  function platformLabelWithGarden(id: string) {
+    const p = platforms?.find((p) => p.id === id);
+    if (!p) return id;
+    return `${gardens?.find((g) => g.id === p.garden_id)?.name + " | "}Tầng ${p.floor} - ${p.name}`;
   }
 
   async function doUpdateImage() {
@@ -202,6 +218,42 @@ export default function PlantsPage() {
     }
     processQueue().catch(console.error);
   }
+  function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string }) {
+    setEditingBatchId(b.id);
+    setEditQty(String(b.quantity));
+    setEditPotSize(b.pot_size);
+    setEditDate(b.planted_date);
+    setEditPlatformId(b.platform_id);
+  }
+
+  async function doUpdateBatch(batchId: string, oldQty: number, plantId: string) {
+    const newQty = Number(editQty);
+    if (!newQty || !editPlatformId) return;
+
+    const updates = { quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId };
+    await db.plantLocations.update(batchId, updates);
+
+    const batch = (locations ?? []).find((l) => l.id === batchId);
+    await db.syncQueue.add({
+      id: uuidv4(), type: "UPDATE", entity: "plant_location",
+      payload: { ...(batch ?? {}), ...updates, id: batchId } as Record<string, unknown>,
+      status: "pending", retry_count: 0, created_at: Date.now(),
+    });
+
+    const plant = plants?.find((p) => p.id === plantId);
+    if (plant && newQty !== oldQty) {
+      const newTotal = Math.max(0, plant.total_quantity - oldQty + newQty);
+      await db.plants.update(plantId, { total_quantity: newTotal });
+      await db.syncQueue.add({
+        id: uuidv4(), type: "UPDATE", entity: "plant",
+        payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+    }
+
+    setEditingBatchId(null);
+    processQueue().catch(console.error);
+  }
 
   async function doDeletePlant(plantId: string) {
     const batches = (locations ?? []).filter((l) => l.plant_id === plantId);
@@ -220,7 +272,13 @@ export default function PlantsPage() {
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
     processQueue().catch(console.error);
+    closeDetail();
+  }
+
+  function closeDetail() {
     setDetailPlantId(null);
+    setEditingBatchId(null);
+    setEditPlatformSearch("");
   }
 
   let plantIds = [...new Set(locations?.map((l) => l.plant_id) ?? [])];
@@ -316,7 +374,7 @@ export default function PlantsPage() {
                   onChange={(e) => setPotSize(Number(e.target.value))}
                 >
                   {POT_SIZES.map((s) => (
-                    <option key={s} value={s}>🪴 Cỡ {s}</option>
+                    <option key={s} value={s}>🪴 Chậu {s}</option>
                   ))}
                 </Select>
                 <Input
@@ -346,24 +404,67 @@ export default function PlantsPage() {
                 >
                   <option value="">Tầng</option>
                   {floorsInGarden.map((f) => (
-                    <option key={f} value={f}>T{f}</option>
+                    <option key={f} value={f}>Tầng {f}</option>
                   ))}
                 </Select>
-                <Select
-                  className="w-2/4"
-                  value={platformId}
-                  onChange={(e) => setPlatformId(e.target.value)}
-                >
-                  <option value="">— Sàn —</option>
-                  {filteredPlatforms?.map((p) => {
-                    const free = p.capacity -
-                      ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
-                    const label = filterFloor
-                      ? `${p.name} (còn ${free})`
-                      : `T${p.floor} · ${p.name} (${free})`;
-                    return <option key={p.id} value={p.id}>{label}</option>;
-                  })}
-                </Select>
+                <div className="relative w-2/4">
+                  <div
+                    className="flex items-center border border-gray-200 rounded-xl bg-white px-2 h-10 gap-1 cursor-text"
+                    onClick={() => setShowPlatformDropdown(true)}
+                  >
+                    <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0"
+                      placeholder={platformId ? platformLabel(platformId) : "— Sàn —"}
+                      value={platformSearch}
+                      onChange={(e) => { setPlatformSearch(e.target.value); setShowPlatformDropdown(true); }}
+                      onFocus={() => setShowPlatformDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowPlatformDropdown(false), 150)}
+                    />
+                    {platformId && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-gray-400 hover:text-gray-600"
+                        onMouseDown={(e) => { e.preventDefault(); setPlatformId(""); setPlatformSearch(""); }}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {showPlatformDropdown && (
+                    <ul className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                      {(filteredPlatforms ?? [])
+                        .filter((p) => {
+                          if (!platformSearch.trim()) return true;
+                          const q = platformSearch.toLowerCase();
+                          const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                          const label = `tầng ${p.floor} ${p.name} ${free}`;
+                          return label.toLowerCase().includes(q);
+                        })
+                        .map((p) => {
+                          const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                          const label = filterFloor ? `${p.name} (còn ${free})` : `${gardens?.find((g) => g.id === p.garden_id)?.name + " | "}Tầng ${p.floor} - ${p.name} (${free})`;
+                          return (
+                            <li
+                              key={p.id}
+                              className={`px-3 py-2 cursor-pointer hover:bg-emerald-50 ${platformId === p.id ? "bg-emerald-50 font-medium text-emerald-700" : "text-gray-800"}`}
+                              onMouseDown={() => { setPlatformId(p.id); setPlatformSearch(""); setShowPlatformDropdown(false); }}
+                            >
+                              {label}
+                            </li>
+                          );
+                        })}
+                      {(filteredPlatforms ?? []).filter((p) => {
+                        if (!platformSearch.trim()) return true;
+                        const q = platformSearch.toLowerCase();
+                        const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                        return `tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
+                      }).length === 0 && (
+                        <li className="px-3 py-2 text-gray-400 text-center">Không tìm thấy</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
               </div>
 
               <button
@@ -372,7 +473,7 @@ export default function PlantsPage() {
                 className="w-full h-11 rounded-xl font-semibold text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.99] transition-all"
               >
                 <Leaf className="w-4 h-4" />
-                Lưu cây
+                Lưu
               </button>
             </form>
           </CardContent>
@@ -384,7 +485,7 @@ export default function PlantsPage() {
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-gray-800 flex items-center gap-2">
             Danh sách
-            <Badge variant="default">{plants?.length ?? 0} cây</Badge>
+            <Badge variant="default">{plants?.length ?? 0} khay</Badge>
             <Badge variant="secondary">{locations?.length ?? 0} đợt</Badge>
           </h2>
           {searchQuery && (
@@ -448,9 +549,9 @@ export default function PlantsPage() {
                             {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
                             <span>{platformLabel(b.platform_id)}</span>
                             <span className="text-gray-300">·</span>
-                            <span>{b.quantity} cây, cỡ {b.pot_size}</span>
+                            <span>{b.quantity} khay, chậu {b.pot_size}</span>
                             <span className="text-gray-300">·</span>
-                            <span className="text-gray-900 text-xs">{fmtDate(b.planted_date)}</span>
+                            <span className="text-gray-900 text-xs ml-auto">{fmtDate(b.planted_date)}</span>
                           </div>
                         ))}
                       </div>
@@ -469,7 +570,7 @@ export default function PlantsPage() {
         <div
           className="fixed inset-0 z-50 flex flex-col justify-end"
           style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-          onClick={() => setDetailPlantId(null)}
+          onClick={() => closeDetail()}
         >
           <div
             className="bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col"
@@ -485,7 +586,7 @@ export default function PlantsPage() {
                 <h2 className="text-xl font-bold text-gray-900">{detailPlant.name}</h2>
                 <button
                   className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
-                  onClick={() => setDetailPlantId(null)}
+                  onClick={() => closeDetail()}
                 >
                   <X className="w-4 h-4 text-gray-600" />
                 </button>
@@ -520,7 +621,7 @@ export default function PlantsPage() {
                 </div>
               ) : (
                 <button
-                  className="w-full h-10 rounded-xl border border-gray-200 text-sm text-gray-600 flex items-center justify-center gap-2 hover:bg-gray-50"
+                  className="w-full h-8 rounded-xl border border-gray-200 text-sm text-gray-600 flex items-center justify-center gap-2 hover:bg-gray-50"
                   onClick={() => setEditingImage(true)}
                 >
                   <ImageIcon className="w-4 h-4" />
@@ -542,30 +643,137 @@ export default function PlantsPage() {
                 <h3 className="font-semibold text-gray-800 mb-2 text-sm">Các đợt trồng ({detailBatches.length})</h3>
                 <div className="space-y-2">
                   {detailBatches.map((b) => (
-                    <div key={b.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
-                      <div className="text-sm space-y-0.5 min-w-0">
-                        <div className="flex items-center gap-1.5 text-gray-800 font-medium">
-                          <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
-                          {b.quantity} cây · cỡ {b.pot_size}
+                    <div key={b.id} className="bg-gray-50 rounded-xl px-3 py-2.5 space-y-2">
+                      {editingBatchId === b.id ? (
+                        <>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              className="w-1/3 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
+                              placeholder="SL"
+                              value={editQty}
+                              onChange={(e) => setEditQty(e.target.value)}
+                            />
+                            <select
+                              className="w-1/3 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
+                              value={editPotSize}
+                              onChange={(e) => setEditPotSize(Number(e.target.value))}
+                            >
+                              {POT_SIZES.map((s) => <option key={s} value={s}>Chậu {s}</option>)}
+                            </select>
+                            <input
+                              type="date"
+                              className="w-1/3 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
+                              value={editDate}
+                              onChange={(e) => setEditDate(e.target.value)}
+                            />
+                          </div>
+                          <div className="relative">
+                            <div
+                              className="flex items-center border border-gray-200 rounded-lg bg-white px-2 h-9 gap-1 cursor-text"
+                              onClick={() => setShowEditPlatformDropdown(true)}
+                            >
+                              <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                              <input
+                                className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0"
+                                placeholder={editPlatformId ? platformLabelWithGarden(editPlatformId) : "— Sàn —"}
+                                value={editPlatformSearch}
+                                onChange={(e) => { setEditPlatformSearch(e.target.value); setShowEditPlatformDropdown(true); }}
+                                onFocus={() => setShowEditPlatformDropdown(true)}
+                                onBlur={() => setTimeout(() => setShowEditPlatformDropdown(false), 150)}
+                              />
+                              {editPlatformId && (
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-gray-400 hover:text-gray-600"
+                                  onMouseDown={(e) => { e.preventDefault(); setEditPlatformId(""); setEditPlatformSearch(""); }}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            {showEditPlatformDropdown && (
+                              <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                                {(platforms ?? [])
+                                  .filter((p) => {
+                                    if (!editPlatformSearch.trim()) return true;
+                                    const q = editPlatformSearch.toLowerCase();
+                                    const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                                    const gardenName = gardens?.find((g) => g.id === p.garden_id)?.name ?? "";
+                                    return `${gardenName} tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
+                                  })
+                                  .map((p) => {
+                                    const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                                    const gardenName = gardens?.find((g) => g.id === p.garden_id)?.name;
+                                    const label = `${gardenName ? gardenName + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${free})`;
+                                    return (
+                                      <li
+                                        key={p.id}
+                                        className={`px-3 py-2 cursor-pointer hover:bg-emerald-50 ${editPlatformId === p.id ? "bg-emerald-50 font-medium text-emerald-700" : "text-gray-800"}`}
+                                        onMouseDown={() => { setEditPlatformId(p.id); setEditPlatformSearch(""); setShowEditPlatformDropdown(false); }}
+                                      >
+                                        {label}
+                                      </li>
+                                    );
+                                  })}
+                              </ul>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              className="flex-1 h-9 rounded-lg text-sm font-semibold text-white"
+                              style={{ backgroundColor: "#059669" }}
+                              onClick={() => confirm(
+                                `Cập nhật đợt này thành ${editQty} khay, chậu ${editPotSize}?`,
+                                () => doUpdateBatch(b.id, b.quantity, b.plant_id)
+                              )}
+                            >
+                              Lưu
+                            </button>
+                            <button
+                              className="flex-1 h-9 rounded-lg text-sm border border-gray-200 text-gray-600"
+                              onClick={() => setEditingBatchId(null)}
+                            >
+                              Huỷ
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm space-y-0.5 min-w-0">
+                            <div className="flex items-center gap-1.5 text-gray-800 font-medium">
+                              <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
+                              {b.quantity} khay · chậu {b.pot_size}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                              <MapPin className="w-3 h-3" />
+                              <span className="truncate">{platformLabelWithGarden(b.platform_id)}</span>
+                              <span>·</span>
+                              <Calendar className="w-3 h-3" />
+                              {fmtDate(b.planted_date)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="ml-2 w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                              style={{ backgroundColor: "#fff7ed" }}
+                              onClick={() => startEditBatch(b)}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="ml-2 w-8 h-8 rounded-lg flex items-center justify-center text-red-500 shrink-0"
+                              style={{ backgroundColor: "#fef2f2" }}
+                              onClick={() => confirm(
+                                `Xoá đợt ${b.quantity} khay tại ${platformLabel(b.platform_id)}?`,
+                                () => doDeleteBatch(b.id, b.quantity, b.plant_id)
+                              )}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <MapPin className="w-3 h-3" />
-                          <span className="truncate">{platformLabel(b.platform_id)}</span>
-                          <span>·</span>
-                          <Calendar className="w-3 h-3" />
-                          {fmtDate(b.planted_date)}
-                        </div>
-                      </div>
-                      <button
-                        className="ml-2 w-8 h-8 rounded-lg flex items-center justify-center text-red-500 shrink-0"
-                        style={{ backgroundColor: "#fef2f2" }}
-                        onClick={() => confirm(
-                          `Xoá đợt ${b.quantity} cây tại ${platformLabel(b.platform_id)}?`,
-                          () => doDeleteBatch(b.id, b.quantity, b.plant_id)
-                        )}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      )}
                     </div>
                   ))}
                 </div>

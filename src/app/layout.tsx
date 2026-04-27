@@ -14,6 +14,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+
 export const viewport = {
   themeColor: "#0f172a",
   width: "device-width",

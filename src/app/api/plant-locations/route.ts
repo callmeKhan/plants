@@ -65,6 +65,30 @@ export async function POST(request: Request) {
   }
 }
 
+// PUT /api/plant-locations?id=xxx — update an existing plant_location
+export async function PUT(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+
+  try {
+    const body = await request.json();
+    const { quantity, pot_size, planted_date, platform_id, plant_id } = body;
+
+    const { data, error } = await supabase
+      .from("plant_locations")
+      .update({ quantity, pot_size, planted_date, platform_id, plant_id })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data);
+  } catch (e) {
+    return NextResponse.json({ error: `Failed: ${e}` }, { status: 500 });
+  }
+}
+
 // DELETE /api/plant-locations?id=xxx
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);

@@ -9,10 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trees, LayoutGrid, Trash2, AlertCircle, Plus, ChevronDown } from "lucide-react";
+import { Trees, LayoutGrid, Trash2, AlertCircle, Plus, ChevronDown, X, Package, Calendar, Leaf } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 
 type ConfirmModal = { message: string; onConfirm: () => void } | null;
+
+const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
+function fmtDate(d: string) {
+  if (!d) return "";
+  const [y, m, day] = d.split("-");
+  return `${day}/${m}/${y}`;
+}
 
 export default function PlatformsPage() {
   const [gardenName, setGardenName] = useState("");
@@ -26,6 +33,7 @@ export default function PlatformsPage() {
   const [openPlatform, setOpenPlatform] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState<ConfirmModal>(null);
+  const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
 
   function confirm(message: string, onConfirm: () => void) {
     setConfirmModal({ message, onConfirm });
@@ -34,6 +42,7 @@ export default function PlatformsPage() {
   const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
   const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
+  const plants = useLiveQuery(() => db.plants.toArray(), [], []);
 
   async function handleAddGarden(e: React.FormEvent) {
     e.preventDefault();
@@ -94,7 +103,7 @@ export default function PlatformsPage() {
       .filter((l) => gardenPlatformIds.includes(l.platform_id))
       .reduce((s, l) => s + l.quantity, 0);
     confirm(
-      `Xoá vườn "${gardenName}"?\nHiện có ${plantCount} cây đang được trồng trong vườn này.`,
+      `Xoá vườn "${gardenName}"?\nHiện có ${plantCount} khay đang được trồng trong vườn này.`,
       () => doDeleteGarden(id)
     );
   }
@@ -154,7 +163,7 @@ export default function PlatformsPage() {
       .filter((l) => l.platform_id === id)
       .reduce((s, l) => s + l.quantity, 0);
     confirm(
-      `Xoá sàn "${platformName}"?\nHiện có ${plantCount} cây đang được trồng trên sàn này.`,
+      `Xoá sàn "${platformName}"?\nHiện có ${plantCount} khay đang được trồng trên sàn này.`,
       () => doDeletePlatform(id)
     );
   }
@@ -214,7 +223,7 @@ export default function PlatformsPage() {
                           <p className="font-semibold text-gray-900 text-sm whitespace-nowrap">{g.name}</p>
                           <div className="flex gap-1.5 mt-0.5">
                             <Badge variant="secondary">{platformCount} sàn</Badge>
-                            <Badge variant="default">{plantCount} cây</Badge>
+                            <Badge variant="default">{plantCount} khay</Badge>
                           </div>
                         </div>
                         <button
@@ -331,34 +340,40 @@ export default function PlatformsPage() {
                           const free = p.capacity - used;
                           const pct = Math.round((used / p.capacity) * 100);
                           return (
-                            <Card key={p.id}>
-                              <CardContent className="py-3 px-4">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="font-semibold text-gray-900 text-sm">{p.name}</span>
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant={free === 0 ? "warning" : "secondary"}>
-                                      còn {free}/{p.capacity}
-                                    </Badge>
-                                    <button
-                                      onClick={() => handleDelete(p.id, p.name)}
-                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                            <div
+                              key={p.id}
+                              className="w-full text-left cursor-pointer"
+                              onClick={() => setDetailPlatformId(p.id)}
+                            >
+                              <Card className="hover:shadow-md hover:border-blue-200 transition-all duration-200 active:scale-[0.99]">
+                                <CardContent className="py-3 px-4">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-semibold text-gray-900 text-sm">{p.name}</span>
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant={free === 0 ? "warning" : "secondary"}>
+                                        còn {free}/{p.capacity}
+                                      </Badge>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }}
+                                        className="w-7 h-7 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                                {/* Capacity bar */}
-                                <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full transition-all"
-                                    style={{
-                                      width: `${pct}%`,
-                                      backgroundColor: pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
-                                    }}
-                                  />
-                                </div>
-                              </CardContent>
-                            </Card>
+                                  {/* Capacity bar */}
+                                  <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all"
+                                      style={{
+                                        width: `${pct}%`,
+                                        backgroundColor: pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
+                                      }}
+                                    />
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </div>
                           );
                         })}
                       </div>
@@ -397,6 +412,110 @@ export default function PlatformsPage() {
           </div>
         )}
       </div>
+
+      {/* Platform detail bottom sheet */}
+      {(() => {
+        const detailPlatform = detailPlatformId ? platforms?.find((p) => p.id === detailPlatformId) : null;
+        if (!detailPlatform) return null;
+        const garden = gardens?.find((g) => g.id === detailPlatform.garden_id);
+        const platformLocs = (locations ?? []).filter((l) => l.platform_id === detailPlatform.id);
+        const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
+        const free = detailPlatform.capacity - used;
+        const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex flex-col justify-end"
+            style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+            onClick={() => setDetailPlatformId(null)}
+          >
+            <div
+              className="bg-white rounded-t-3xl shadow-2xl min-h-[85vh] flex flex-col"
+              style={{ marginBottom: "64px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-white rounded-t-3xl z-10 px-5 pt-3 pb-3 border-b border-gray-100">
+                <div className="flex justify-center mb-2">
+                  <div className="w-10 h-1 rounded-full bg-gray-200" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{detailPlatform.name}</h2>
+                    {garden && <p className="text-xs text-gray-400">{garden.name} · Tầng {detailPlatform.floor}</p>}
+                  </div>
+                  <button
+                    className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                    onClick={() => setDetailPlatformId(null)}
+                  >
+                    <X className="w-4 h-4 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="overflow-y-auto px-5 pb-6 space-y-4 pt-4">
+
+                {/* Capacity stats */}
+                <div className="rounded-2xl p-4 space-y-2" style={{ backgroundColor: "#eff6ff" }}>
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4" style={{ color: "#2563eb" }} />
+                    <span className="text-sm font-medium" style={{ color: "#1e3a8a" }}>Sức chứa</span>
+                    <span className="ml-auto text-lg font-bold" style={{ color: "#2563eb" }}>{used}/{detailPlatform.capacity}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, backgroundColor: pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#2563eb" }}
+                    />
+                  </div>
+                  <p className="text-xs text-blue-400">Còn trống: {free} khay</p>
+                </div>
+
+                {/* Plants list */}
+                <div>
+                  <h3 className="font-semibold text-gray-800 mb-2 text-sm">Cây đang trồng ({platformLocs.length} đợt)</h3>
+                  {platformLocs.length === 0 ? (
+                    <div className="flex flex-col items-center py-8 text-gray-400">
+                      <Leaf className="w-8 h-8 mb-2 opacity-30" />
+                      <p className="text-sm">Chưa có cây nào trên sàn này</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {platformLocs.map((loc) => {
+                        const plant = plants?.find((p) => p.id === loc.plant_id);
+                        return (
+                          <div key={loc.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                            <div className="w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={plant?.image_url || PLACEHOLDER_IMAGE}
+                                alt={plant?.name ?? ""}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
+                              <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                                <Package className="w-3 h-3" />
+                                <span>{loc.quantity} khay · chậu {loc.pot_size}</span>
+                                <span>·</span>
+                                <Calendar className="w-3 h-3" />
+                                <span>{fmtDate(loc.planted_date)}</span>
+                              </div>
+                            </div>
+                            <Badge variant="default">×{loc.quantity}</Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Confirm modal */}
       {confirmModal && (

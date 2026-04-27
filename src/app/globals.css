@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/material-symbols-outlined";
 
 :root {
   --background: #f8faf8;
@@ -50,3 +51,19 @@ textarea {
 .slide-in-from-top-2 { animation-name: slideInFromTop; }
 .duration-200 { animation-duration: 200ms; }
 .duration-300 { animation-duration: 300ms; }
+
+/* Material Symbols icon font (self-hosted via Fontsource) */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined Variable', sans-serif;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
