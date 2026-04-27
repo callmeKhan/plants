@@ -485,8 +485,7 @@ export default function PlantsPage() {
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-gray-800 flex items-center gap-2">
             Danh sách
-            <Badge variant="default">{plants?.length ?? 0} khay</Badge>
-            <Badge variant="secondary">{locations?.length ?? 0} đợt</Badge>
+            <Badge variant="default">{plants?.length ?? 0} loại hoa</Badge>
           </h2>
           {searchQuery && (
             <button
