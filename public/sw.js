@@ -1,5 +1,5 @@
 // Bump this version on every deploy to force SW update
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `plant-manager-${CACHE_VERSION}`;
 
 // On install: skip waiting so the new SW takes over immediately
@@ -30,6 +30,18 @@ self.addEventListener("fetch", (event) => {
   // Skip API calls — always go to network
   if (url.pathname.startsWith("/api/")) return;
 
+  // HTML navigations (page requests) — NEVER serve from cache.
+  // Always fetch fresh from network so CSS/JS references are always current.
+  // Fall back to cached copy only when completely offline.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        caches.match(event.request).then((cached) => cached || caches.match("/"))
+      )
+    );
+    return;
+  }
+
   // _next/static assets are content-hashed by Next.js → cache-first is safe
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
@@ -47,23 +59,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else (HTML navigation, images, etc.) → network-first
-  // This guarantees users always get the latest deploy.
+  // Everything else (images, public assets, etc.) → network-first with cache fallback
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache a fresh copy for offline use
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
       })
-      .catch(() => {
-        // Offline fallback: serve from cache if available
-        return caches.match(event.request).then(
-          (cached) => cached || caches.match("/")
-        );
-      })
+      .catch(() =>
+        caches.match(event.request).then((cached) => cached || caches.match("/"))
+      )
   );
 });

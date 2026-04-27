@@ -5,6 +5,25 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Leaf,
+  Search,
+  X,
+  ChevronRight,
+  ChevronDown,
+  Trash2,
+  ImageIcon,
+  AlertCircle,
+  MapPin,
+  Calendar,
+  Package,
+} from "lucide-react";
+import { Toast } from "@/components/ui/toast";
 
 const POT_SIZES = [14, 16, 21];
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
@@ -32,14 +51,12 @@ export default function PlantsPage() {
   const [filterGarden, setFilterGarden] = useState("");
   const [filterFloor, setFilterFloor] = useState("");
   const [platformId, setPlatformId] = useState("");
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [openForm, setOpenForm] = useState(false);
 
-  // Detail panel state
   const [detailPlantId, setDetailPlantId] = useState<string | null>(null);
   const [editingImage, setEditingImage] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState("");
-
-  // Confirm modal
   const [confirmModal, setConfirmModal] = useState<ConfirmModal>(null);
 
   const plants = useLiveQuery(() => db.plants.toArray(), [], []);
@@ -47,7 +64,6 @@ export default function PlantsPage() {
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
   const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
 
-  // Floors available under selected garden
   const floorsInGarden = [...new Set(
     platforms
       ?.filter((p) => !filterGarden || p.garden_id === filterGarden)
@@ -66,12 +82,11 @@ export default function PlantsPage() {
 
   async function doSubmit() {
     if (!name || !quantity || !platformId) {
-      setMsg("❌ Tên cây, số lượng và sàn là bắt buộc");
+      setMsg({ text: "Tên cây, số lượng và sàn là bắt buộc", type: "error" });
       return;
     }
 
     const qty = Number(quantity);
-
     const resolvedId = selectedPlantId
       ?? plants?.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
       ?? null;
@@ -99,22 +114,18 @@ export default function PlantsPage() {
     }
 
     const platform = platforms?.find((p) => p.id === platformId);
-    if (!platform) { setMsg("❌ Không tìm thấy sàn"); return; }
+    if (!platform) { setMsg({ text: "Không tìm thấy sàn", type: "error" }); return; }
     const usedCap = (locations ?? [])
       .filter((l) => l.platform_id === platformId)
       .reduce((s, l) => s + l.quantity, 0);
     if (usedCap + qty > platform.capacity) {
-      setMsg(`❌ Vượt sức chứa: đã dùng ${usedCap} + ${qty} > cap ${platform.capacity}`);
+      setMsg({ text: `Vượt sức chứa: đã dùng ${usedCap} + ${qty} > cap ${platform.capacity}`, type: "error" });
       return;
     }
 
     const loc = {
-      id: uuidv4(),
-      plant_id: plant.id,
-      platform_id: platformId,
-      quantity: qty,
-      pot_size: potSize,
-      planted_date: plantedDate,
+      id: uuidv4(), plant_id: plant.id, platform_id: platformId,
+      quantity: qty, pot_size: potSize, planted_date: plantedDate,
     };
     await db.plantLocations.add(loc);
     await db.syncQueue.add({
@@ -125,14 +136,14 @@ export default function PlantsPage() {
 
     setName(""); setSelectedPlantId(null); setQuantity("");
     setImageUrl(""); setPlatformId(""); setPlantedDate(todayStr());
-    setMsg("✅ Đã lưu cây và vị trí");
+    setMsg({ text: "Đã lưu cây và vị trí thành công!", type: "success" });
     processQueue().catch(console.error);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name || !quantity || !platformId) {
-      setMsg("❌ Tên cây, số lượng và sàn là bắt buộc");
+      setMsg({ text: "Tên cây, số lượng và sàn là bắt buộc", type: "error" });
       return;
     }
     const qty = Number(quantity);
@@ -148,7 +159,7 @@ export default function PlantsPage() {
     const p = platforms?.find((p) => p.id === id);
     if (!p) return id;
     const garden = gardens?.find((g) => g.id === p.garden_id);
-    return `${garden ? garden.name + " · " : ""}Tầng ${p.floor} - ${p.name}`;
+    return `${garden ? garden.name + " · " : ""}Tầng ${p.floor} · ${p.name}`;
   }
 
   async function doUpdateImage() {
@@ -177,7 +188,6 @@ export default function PlantsPage() {
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "plant_location",
       payload: { id: batchId } as Record<string, unknown>,
-      // eslint-disable-next-line react-hooks/purity
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
     const plant = plants?.find((p) => p.id === plantId);
@@ -187,7 +197,6 @@ export default function PlantsPage() {
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",
         payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-        // eslint-disable-next-line react-hooks/purity
         status: "pending", retry_count: 0, created_at: Date.now(),
       });
     }
@@ -227,285 +236,379 @@ export default function PlantsPage() {
     : [];
 
   return (
-    <div>
-      <h1 className="text-xl font-bold mb-4">🌿 Thêm cây</h1>
+    <div className="max-w-lg mx-auto space-y-4">
+      {/* Form header — collapsible */}
+      <button
+        onClick={() => setOpenForm((v) => !v)}
+        className="w-full flex items-center gap-3 pt-1 text-left"
+      >
+        <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shadow-sm shrink-0">
+          <Leaf className="w-5 h-5 text-white" />
+        </div>
+        <div className="flex-1">
+          <h1 className="text-lg font-bold text-gray-900 leading-tight">Thêm cây mới</h1>
+          <p className="text-xs text-gray-400">Nhập thông tin và vị trí trồng</p>
+        </div>
+        <ChevronDown
+          className="w-5 h-5 text-gray-400 transition-transform duration-200"
+          style={{ transform: openForm ? "rotate(180deg)" : "rotate(0deg)" }}
+        />
+      </button>
 
-      <form onSubmit={handleSubmit} className="space-y-2 mb-4">
-        {/* Plant name with autocomplete */}
-        <div className="relative">
-          <input
-            className="border rounded w-full px-3 py-2 text-sm"
-            placeholder="Tên cây"
-            value={name}
-            autoComplete="off"
-            onChange={(e) => { setName(e.target.value); setSelectedPlantId(null); setShowSuggestions(true); }}
-            onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-          />
-          {showSuggestions && name && (
-            <ul className="absolute z-10 w-full bg-white border rounded shadow max-h-48 overflow-y-auto text-sm">
-              {plants
-                ?.filter((p) => p.name.toLowerCase().includes(name.toLowerCase()))
-                .map((p) => (
-                  <li
-                    key={p.id}
-                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                    onMouseDown={() => { setName(p.name); setSelectedPlantId(p.id); setShowSuggestions(false); }}
-                  >
-                    {p.name}
-                    <span className="text-gray-400 ml-1 text-xs">(tổng: {p.total_quantity})</span>
-                  </li>
-                ))}
-            </ul>
+      {/* Toast */}
+      {msg && <Toast msg={msg} onClose={() => setMsg(null)} />}
+
+      {/* Add plant form — collapsed by default */}
+      {openForm && (
+        <Card>
+          <CardContent className="pt-4">
+            <form onSubmit={handleSubmit} className="space-y-3">
+              {/* Plant name autocomplete */}
+              <div className="relative">
+                <Input
+                  placeholder="🌿 Tên cây"
+                  value={name}
+                  autoComplete="off"
+                  onChange={(e) => { setName(e.target.value); setSelectedPlantId(null); setShowSuggestions(true); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                />
+                {showSuggestions && name && (
+                  <ul className="absolute z-10 w-full bg-white border border-gray-100 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                    {plants
+                      ?.filter((p) => p.name.toLowerCase().includes(name.toLowerCase()))
+                      .map((p) => (
+                        <li
+                          key={p.id}
+                          className="px-4 py-2.5 hover:bg-emerald-50 cursor-pointer flex items-center justify-between"
+                          onMouseDown={() => { setName(p.name); setSelectedPlantId(p.id); setShowSuggestions(false); }}
+                        >
+                          <span className="font-medium text-gray-800">{p.name}</span>
+                          <Badge variant="secondary">tổng: {p.total_quantity}</Badge>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Quantity + Image URL */}
+              <div className="flex gap-2">
+                <Input
+                  className="w-1/3"
+                  placeholder="📦 Số lượng"
+                  type="number"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                />
+                <Input
+                  className="w-2/3"
+                  placeholder="🖼 URL hình (tuỳ chọn)"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                />
+              </div>
+
+              {/* Pot size + Planted date */}
+              <div className="flex gap-2">
+                <Select
+                  className="w-1/3"
+                  value={potSize}
+                  onChange={(e) => setPotSize(Number(e.target.value))}
+                >
+                  {POT_SIZES.map((s) => (
+                    <option key={s} value={s}>🪴 Cỡ {s}</option>
+                  ))}
+                </Select>
+                <Input
+                  className="w-2/3"
+                  type="date"
+                  value={plantedDate}
+                  onChange={(e) => setPlantedDate(e.target.value)}
+                />
+              </div>
+
+              {/* Location selects */}
+              <div className="flex gap-2">
+                <Select
+                  className="w-1/4"
+                  value={filterGarden}
+                  onChange={(e) => { setFilterGarden(e.target.value); setFilterFloor(""); setPlatformId(""); }}
+                >
+                  <option value="">Vườn</option>
+                  {gardens?.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </Select>
+                <Select
+                  className="w-1/4"
+                  value={filterFloor}
+                  onChange={(e) => { setFilterFloor(e.target.value); setPlatformId(""); }}
+                >
+                  <option value="">Tầng</option>
+                  {floorsInGarden.map((f) => (
+                    <option key={f} value={f}>T{f}</option>
+                  ))}
+                </Select>
+                <Select
+                  className="w-2/4"
+                  value={platformId}
+                  onChange={(e) => setPlatformId(e.target.value)}
+                >
+                  <option value="">— Sàn —</option>
+                  {filteredPlatforms?.map((p) => {
+                    const free = p.capacity -
+                      ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                    const label = filterFloor
+                      ? `${p.name} (còn ${free})`
+                      : `T${p.floor} · ${p.name} (${free})`;
+                    return <option key={p.id} value={p.id}>{label}</option>;
+                  })}
+                </Select>
+              </div>
+
+              <button
+                type="submit"
+                style={{ backgroundColor: "#059669", color: "white" }}
+                className="w-full h-11 rounded-xl font-semibold text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.99] transition-all"
+              >
+                <Leaf className="w-4 h-4" />
+                Lưu cây
+              </button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* List section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+            Danh sách
+            <Badge variant="default">{plants?.length ?? 0} cây</Badge>
+            <Badge variant="secondary">{locations?.length ?? 0} đợt</Badge>
+          </h2>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="text-xs text-emerald-600 flex items-center gap-1"
+            >
+              <X className="w-3 h-3" /> Bỏ lọc
+            </button>
           )}
         </div>
 
-        <div className="flex gap-2">
+        {/* Search */}
+        <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 bg-white shadow-sm">
+          <Search className="w-4 h-4 text-gray-400 shrink-0" />
           <input
-            className="border rounded w-1/3 px-3 py-2 text-sm"
-            placeholder="Số lượng"
-            type="number"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
-          <input
-            className="border rounded w-2/3 px-3 py-2 text-sm"
-            placeholder="URL hình (tuỳ chọn)"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
+            className="flex-1 h-10 text-sm bg-transparent outline-none placeholder-gray-400"
+            placeholder="Tìm kiếm cây..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
-        {/* Pot size + planted date */}
-        <div className="flex gap-2">
-          <select
-            className="border rounded w-1/3 px-3 py-2 text-sm"
-            value={potSize}
-            onChange={(e) => setPotSize(Number(e.target.value))}
-          >
-            {POT_SIZES.map((s) => (
-              <option key={s} value={s}>Cỡ {s}</option>
-            ))}
-          </select>
-          <input
-            className="border rounded w-2/3 px-3 py-2 text-sm"
-            type="date"
-            value={plantedDate}
-            onChange={(e) => setPlantedDate(e.target.value)}
-          />
+        {/* Cards */}
+        <div className="space-y-2">
+          {plantIds.length === 0 && (
+            <div className="flex flex-col items-center py-10 text-gray-400">
+              <Leaf className="w-10 h-10 mb-2 opacity-30" />
+              <p className="text-sm">Chưa có cây nào</p>
+            </div>
+          )}
+          {plantIds.map((pid) => {
+            const plant = plants?.find((p) => p.id === pid);
+            const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+            const total = batches.reduce((s, l) => s + l.quantity, 0);
+            return (
+              <button
+                key={pid}
+                className="w-full text-left"
+                onClick={() => { setDetailPlantId(pid); setEditingImage(false); setNewImageUrl(""); }}
+              >
+                <Card className="hover:shadow-md hover:border-emerald-200 transition-all duration-200 active:scale-[0.99]">
+                  <CardContent className="py-3 px-4 flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-emerald-50 shrink-0 mt-0.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={plant?.image_url || PLACEHOLDER_IMAGE}
+                        alt={plant?.name ?? ""}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 justify-between">
+                        <span className="font-semibold text-gray-900 truncate">{plant?.name ?? pid}</span>
+                        <Badge variant="default">×{total}</Badge>
+                      </div>
+                      <div className="space-y-1">
+                        {batches.map((b) => (
+                          <div key={b.id} className="text-xs text-gray-500 flex flex-wrap items-center gap-x-1 gap-y-0 border-b border-gray-200">
+                            {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
+                            <span>{platformLabel(b.platform_id)}</span>
+                            <span className="text-gray-300">·</span>
+                            <span>{b.quantity} cây, cỡ {b.pot_size}</span>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-gray-900 text-xs">{fmtDate(b.planted_date)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-300 shrink-0 mt-1" />
+                  </CardContent>
+                </Card>
+              </button>
+            );
+          })}
         </div>
+      </div>
 
-        
-
-        {/* Floor filter */}
-        <div className="flex gap-2">
-          {/* Garden filter */}
-          <select
-            className="border rounded w-1/4 px-3 py-2 text-sm"
-            value={filterGarden}
-            onChange={(e) => { setFilterGarden(e.target.value); setFilterFloor(""); setPlatformId(""); }}
-          >
-            <option value="">- Vườn -</option>
-            {gardens?.map((g) => (
-              <option key={g.id} value={g.id}>{g.name}</option>
-            ))}
-          </select>
-          <select
-            className="border rounded w-1/4 px-3 py-2 text-sm"
-            value={filterFloor}
-            onChange={(e) => { setFilterFloor(e.target.value); setPlatformId(""); }}
-          >
-            <option value="">- Tầng -</option>
-            {floorsInGarden.map((f) => (
-              <option key={f} value={f}>Tầng {f}</option>
-            ))}
-          </select>
-          <select
-            className="border rounded w-2/4 px-3 py-2 text-sm"
-            value={platformId}
-            onChange={(e) => setPlatformId(e.target.value)}
-          >
-            <option value="">- Sàn -</option>
-            {filteredPlatforms?.map((p) => {
-              const free = p.capacity -
-                ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
-              const label = filterFloor
-                ? `${p.name} (${free})`
-                : `Tầng ${p.floor} - ${p.name} (${free})`;
-              return <option key={p.id} value={p.id}>{label}</option>;
-            })}
-          </select>
-        </div>
-
-        <div className="flex gap-2">
-          <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded text-sm flex-1">
-            Lưu
-          </button>
-          <button
-            type="button"
-            className="bg-blue-600 text-white px-4 py-2 rounded text-sm w-24"
-            onClick={() => setSearchQuery(name)}
-          >
-            Tìm
-          </button>
-        </div>
-      </form>
-
-      {msg && <p className="text-sm mb-3">{msg}</p>}
-
-      {/* Plant list */}
-      <h2 className="font-semibold text-sm mb-2 flex justify-between items-center">
-        <span>Danh sách ({locations?.length ?? 0} đợt)</span>
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery("")}
-            className="text-xs text-blue-600 border border-blue-200 px-2 py-1 rounded"
-          >
-            Bỏ lọc
-          </button>
-        )}
-      </h2>
-      <ul className="space-y-2 text-sm">
-        {plantIds.map((pid) => {
-          const plant = plants?.find((p) => p.id === pid);
-          const batches = (locations ?? []).filter((l) => l.plant_id === pid);
-          const total = batches.reduce((s, l) => s + l.quantity, 0);
-          return (
-            <li
-              key={pid}
-              className="border rounded px-3 py-2 cursor-pointer hover:bg-gray-50 active:bg-gray-100"
-              onClick={() => { setDetailPlantId(pid); setEditingImage(false); setNewImageUrl(""); }}
-            >
-              <div className="font-semibold mb-1">
-                {plant?.name ?? pid} × {total}
-              </div>
-              <ul className="space-y-0.5 text-gray-600 text-xs pl-2">
-                {batches.map((b) => (
-                  <li key={b.id}>
-                    {b.quantity} cỡ {b.pot_size} [{platformLabel(b.platform_id)}] {fmtDate(b.planted_date)}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          );
-        })}
-      </ul>
-
-      {/* Detail panel (bottom sheet style) */}
+      {/* Detail bottom sheet */}
       {detailPlant && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={() => setDetailPlantId(null)}>
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+          onClick={() => setDetailPlantId(null)}
+        >
           <div
-            className="bg-white rounded-t-2xl shadow-xl p-4 max-h-[80vh] overflow-y-auto mb-[100px]"
+            className="bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col"
+            style={{ marginBottom: "64px" }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold">{detailPlant.name}</h2>
-              <button
-                className="text-gray-400 text-xl leading-none"
-                onClick={() => setDetailPlantId(null)}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Image */}
-            <div className="mb-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={detailPlant.image_url || PLACEHOLDER_IMAGE}
-                alt={detailPlant.name}
-                className="object-contain w-full h-48 rounded-lg bg-gray-100"
-                onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
-              />
-            </div>
-
-            {/* Update image */}
-            {editingImage ? (
-              <div className="flex gap-2 mb-3">
-                <input
-                  className="border rounded flex-1 px-3 py-2 text-sm"
-                  placeholder="Nhập URL hình mới"
-                  value={newImageUrl}
-                  onChange={(e) => setNewImageUrl(e.target.value)}
-                  autoFocus
-                />
+            {/* Sticky header: drag handle + tên + nút X */}
+            <div className="sticky top-0 bg-white rounded-t-3xl z-10 px-5 pt-3 pb-3 border-b border-gray-100">
+              <div className="flex justify-center mb-2">
+                <div className="w-10 h-1 rounded-full bg-gray-200" />
+              </div>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">{detailPlant.name}</h2>
                 <button
-                  className="bg-green-600 text-white px-3 py-2 rounded text-sm"
-                  onClick={handleUpdateImage}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  onClick={() => setDetailPlantId(null)}
                 >
-                  Lưu
-                </button>
-                <button
-                  className="bg-gray-100 border px-3 py-2 rounded text-sm"
-                  onClick={() => { setEditingImage(false); setNewImageUrl(""); }}
-                >
-                  Huỷ
+                  <X className="w-4 h-4 text-gray-600" />
                 </button>
               </div>
-            ) : (
-              <button
-                className="mb-3 text-sm text-blue-600 border border-blue-200 rounded px-3 py-1.5 w-full"
-                onClick={() => setEditingImage(true)}
-              >
-                🖼 Cập nhật hình
-              </button>
-            )}
-
-            {/* Info */}
-            <div className="text-sm text-gray-700 mb-3">
-              <p><span className="font-medium">Tổng số lượng:</span> {detailPlant.total_quantity}</p>
             </div>
 
-            {/* Batches */}
-            <h3 className="font-semibold text-sm mb-1">Các đợt trồng</h3>
-            <ul className="space-y-1 text-xs text-gray-600 mb-4">
-              {detailBatches.map((b) => (
-                <li key={b.id} className="border rounded px-2 py-1.5 flex items-center justify-between">
-                  <span>
-                    {b.quantity} cây · cỡ {b.pot_size} · {platformLabel(b.platform_id)} · {fmtDate(b.planted_date)}
-                  </span>
-                  <button
-                    className="ml-2 text-red-500 border border-red-200 rounded px-2 py-0.5 text-xs shrink-0"
-                    onClick={() => confirm(
-                      `Xoá đợt ${b.quantity} cây tại ${platformLabel(b.platform_id)}?`,
-                      () => doDeleteBatch(b.id, b.quantity, b.plant_id)
-                    )}
-                  >
-                    Xoá
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {/* Scrollable content */}
+            <div className="overflow-y-auto px-5 pb-6 space-y-4 pt-4">
 
-            {/* Delete plant */}
-            <button
-              className="w-full text-sm text-red-600 border border-red-300 rounded px-3 py-2"
-              onClick={() => confirm(
-                `Xoá toàn bộ cây "${detailPlant.name}" và tất cả ${detailBatches.length} đợt trồng?`,
-                () => doDeletePlant(detailPlant.id)
+              {/* Image */}
+              <div className="rounded-2xl overflow-hidden bg-gray-50 aspect-square w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={detailPlant.image_url || PLACEHOLDER_IMAGE}
+                  alt={detailPlant.name}
+                  className="object-cover w-full h-full"
+                  onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
+                />
+              </div>
+
+              {/* Update image */}
+              {editingImage ? (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nhập URL hình mới"
+                    value={newImageUrl}
+                    onChange={(e) => setNewImageUrl(e.target.value)}
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={handleUpdateImage}>Lưu</Button>
+                  <Button size="sm" variant="outline" onClick={() => { setEditingImage(false); setNewImageUrl(""); }}>Huỷ</Button>
+                </div>
+              ) : (
+                <button
+                  className="w-full h-10 rounded-xl border border-gray-200 text-sm text-gray-600 flex items-center justify-center gap-2 hover:bg-gray-50"
+                  onClick={() => setEditingImage(true)}
+                >
+                  <ImageIcon className="w-4 h-4" />
+                  Cập nhật hình ảnh
+                </button>
               )}
-            >
-              🗑 Xoá toàn bộ cây
-            </button>
+
+              {/* Stats */}
+              <div className="rounded-2xl p-4" style={{ backgroundColor: "#ecfdf5" }}>
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4" style={{ color: "#059669" }} />
+                  <span className="text-sm font-medium" style={{ color: "#065f46" }}>Tổng số lượng</span>
+                  <span className="ml-auto text-lg font-bold" style={{ color: "#059669" }}>{detailPlant.total_quantity}</span>
+                </div>
+              </div>
+
+              {/* Batches */}
+              <div>
+                <h3 className="font-semibold text-gray-800 mb-2 text-sm">Các đợt trồng ({detailBatches.length})</h3>
+                <div className="space-y-2">
+                  {detailBatches.map((b) => (
+                    <div key={b.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
+                      <div className="text-sm space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5 text-gray-800 font-medium">
+                          <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
+                          {b.quantity} cây · cỡ {b.pot_size}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <MapPin className="w-3 h-3" />
+                          <span className="truncate">{platformLabel(b.platform_id)}</span>
+                          <span>·</span>
+                          <Calendar className="w-3 h-3" />
+                          {fmtDate(b.planted_date)}
+                        </div>
+                      </div>
+                      <button
+                        className="ml-2 w-8 h-8 rounded-lg flex items-center justify-center text-red-500 shrink-0"
+                        style={{ backgroundColor: "#fef2f2" }}
+                        onClick={() => confirm(
+                          `Xoá đợt ${b.quantity} cây tại ${platformLabel(b.platform_id)}?`,
+                          () => doDeleteBatch(b.id, b.quantity, b.plant_id)
+                        )}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Delete all */}
+              <button
+                className="w-full h-11 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
+                style={{ backgroundColor: "#dc2626" }}
+                onClick={() => confirm(
+                  `Xoá toàn bộ cây "${detailPlant.name}" và tất cả ${detailBatches.length} đợt trồng?`,
+                  () => doDeletePlant(detailPlant.id)
+                )}
+              >
+                <Trash2 className="w-4 h-4" />
+                Xoá toàn bộ cây
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Confirm modal */}
       {confirmModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-xs">
-            <p className="text-sm text-gray-800 mb-5 text-center">{confirmModal.message}</p>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-5"
+          style={{ zIndex: 60, backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
+          <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: "#fffbeb" }}>
+              <AlertCircle className="w-6 h-6" style={{ color: "#f59e0b" }} />
+            </div>
+            <p className="text-sm text-gray-700 mb-6 text-center leading-relaxed">{confirmModal.message}</p>
             <div className="flex gap-3">
               <button
-                className="flex-1 border rounded-lg py-2 text-sm text-gray-600"
+                className="flex-1 h-11 rounded-xl border border-gray-200 text-sm text-gray-600 font-medium"
                 onClick={() => setConfirmModal(null)}
               >
                 Huỷ
               </button>
               <button
-                className="flex-1 bg-green-600 text-white rounded-lg py-2 text-sm font-medium"
+                className="flex-1 h-11 rounded-xl text-sm text-white font-semibold"
+                style={{ backgroundColor: "#059669" }}
                 onClick={() => { confirmModal.onConfirm(); setConfirmModal(null); }}
               >
                 Xác nhận
