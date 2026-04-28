@@ -43,7 +43,12 @@ export default function PlatformsPage() {
   const [movePlatformSearch, setMovePlatformSearch] = useState("");
   const [showMovePlatformDropdown, setShowMovePlatformDropdown] = useState(false);
 
+  const [collapsedFloors, setCollapsedFloors] = useState<Record<string, boolean>>({});
 
+  const toggleFloor = (gardenId: string, floorNum: number) => {
+    const key = `${gardenId}-${floorNum}`;
+    setCollapsedFloors(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
@@ -384,7 +389,8 @@ export default function PlatformsPage() {
               Danh sách sàn
               <Badge variant="secondary">{platforms?.length ?? 0}</Badge>
             </p>
-            {gardens?.map((g) => {
+            {/* garden sort by name */}
+            {gardens?.sort((a, b) => a.name.localeCompare(b.name)).map((g) => {
               const gardenPlatforms = platforms?.filter((p) => p.garden_id === g.id) || [];
               if (gardenPlatforms.length === 0) return null;
               const floors = [...new Set(gardenPlatforms.map((p) => p.floor))].sort((a, b) => a - b);
@@ -396,52 +402,80 @@ export default function PlatformsPage() {
                   </div>
                   {floors.map((floorNum) => {
                     const floorPlatforms = gardenPlatforms.filter((p) => p.floor === floorNum);
+                    const floorKey = `${g.id}-${floorNum}`;
+                    const isCollapsed = collapsedFloors[floorKey];
                     return (
-                      <div key={floorNum} className="pl-4 border-l-2 border-gray-100 space-y-1.5">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tầng {floorNum}</p>
-                        {floorPlatforms.map((p) => {
-                          const used = (locations ?? [])
-                            .filter((l) => l.platform_id === p.id)
-                            .reduce((s, l) => s + l.quantity, 0);
-                          const free = p.capacity - used;
-                          const pct = Math.round((used / p.capacity) * 100);
-                          return (
-                            <div
-                              key={p.id}
-                              className="w-full text-left cursor-pointer"
-                              onClick={() => setDetailPlatformId(p.id)}
-                            >
-                              <Card className="hover:shadow-md hover:border-blue-200 transition-all duration-200 active:scale-[0.99]">
-                                <CardContent className="py-3 px-4">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="font-semibold text-gray-900 text-sm">{p.name}</span>
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant={free === 0 ? "warning" : "secondary"}>
-                                        còn {free}/{p.capacity}
-                                      </Badge>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }}
-                                        className="w-7 h-7 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
+                      <div key={floorNum} className="pl-4 border-l-2 border-gray-100 space-y-1.5 mb-4">
+                        <button
+                          onClick={() => toggleFloor(g.id, floorNum)}
+                          className="flex items-center gap-1 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 hover:text-gray-700 w-full text-left"
+                        >
+                          <ChevronDown
+                            className="w-3.5 h-3.5 transition-transform"
+                            style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+                          />
+                          Tầng {floorNum}
+                          <Badge variant="secondary" className="h-4">{floorPlatforms.length}</Badge>
+                        </button>
+                        {!isCollapsed && (
+                          <div className="flex gap-3 items-start">
+                            {[
+                              { prefix: 'T', items: floorPlatforms.filter(p => p.name.toUpperCase().startsWith('T')) },
+                              { prefix: 'P', items: floorPlatforms.filter(p => p.name.toUpperCase().startsWith('P')) },
+                              { prefix: 'Khác', items: floorPlatforms.filter(p => !p.name.toUpperCase().startsWith('T') && !p.name.toUpperCase().startsWith('P')) }
+                            ].filter(col => col.items.length > 0)
+                            .map((col) => (
+                              <div key={col.prefix} className="flex-1 min-w-0 space-y-1.5">
+                                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">{col.prefix === 'T' ? "Trái" : "Phải"}</h3>
+                                {col.items
+                                  .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+                                  .map((p) => {
+                                    const used = (locations ?? [])
+                                      .filter((l) => l.platform_id === p.id)
+                                      .reduce((s, l) => s + l.quantity, 0);
+                                    const free = p.capacity - used;
+                                    const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
+                                    return (
+                                      <div
+                                        key={p.id}
+                                        className="w-full text-left cursor-pointer"
+                                        onClick={() => setDetailPlatformId(p.id)}
                                       >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                  {/* Capacity bar */}
-                                  <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                    <div
-                                      className="h-full rounded-full transition-all"
-                                      style={{
-                                        width: `${pct}%`,
-                                        backgroundColor: pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
-                                      }}
-                                    />
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </div>
-                          );
-                        })}
+                                        <Card className="hover:shadow-md hover:border-blue-200 transition-all duration-200 active:scale-[0.99]">
+                                          <CardContent className="py-2.5 px-3">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <span className="font-semibold text-gray-900 text-sm truncate mr-1">{p.name}</span>
+                                              <div className="flex items-center gap-1 shrink-0">
+                                                <Badge variant={free === 0 ? "warning" : "secondary"} className="text-[10px] px-1.5 py-0 h-5">
+                                                  {free}/{p.capacity}
+                                                </Badge>
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }}
+                                                  className="w-6 h-6 rounded-md flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                            {/* Capacity bar */}
+                                            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                              <div
+                                                className="h-full rounded-full transition-all"
+                                                style={{
+                                                  width: `${pct}%`,
+                                                  backgroundColor: pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
+                                                }}
+                                              />
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -603,7 +637,7 @@ export default function PlatformsPage() {
                                     type="number"
                                     min={1}
                                     max={loc.quantity}
-                                    className="w-12 h-8 border border-blue-200 rounded-lg px-2 text-sm bg-white outline-none text-center"
+                                    className="w-16 h-6 border border-blue-200 rounded-lg px-2 text-sm bg-white outline-none text-center"
                                     value={moveQty}
                                     onChange={(e) => {
                                       const v = Math.min(Number(e.target.value), loc.quantity);
