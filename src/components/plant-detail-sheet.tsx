@@ -190,13 +190,24 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
     const newTotal = Math.max(0, plant.total_quantity - qty);
-    await db.plants.update(plantId, { total_quantity: newTotal });
-    await db.syncQueue.add({
-      id: uuidv4(), type: "UPDATE", entity: "plant",
-      payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
-    });
-    processQueue().catch(console.error);
+    if (newTotal <= 0) {
+      await db.plants.delete(plantId);
+      await db.syncQueue.add({
+        id: uuidv4(), type: "DELETE", entity: "plant",
+        payload: { id: plantId } as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+      processQueue().catch(console.error);
+      onClose();
+    } else {
+      await db.plants.update(plantId, { total_quantity: newTotal });
+      await db.syncQueue.add({
+        id: uuidv4(), type: "UPDATE", entity: "plant",
+        payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+      processQueue().catch(console.error);
+    }
   }
 
   async function doDeletePlant() {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -60,12 +61,16 @@ export function ConfirmModal({
   confirmLabel = "Xác nhận",
   cancelLabel = "Huỷ",
 }: ConfirmModalProps) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 flex items-center justify-center px-5"
-      style={{ zIndex: 60, backgroundColor: "rgba(0,0,0,0.5)" }}
+      style={{ zIndex: 200, backgroundColor: "rgba(0,0,0,0.5)" }}
+      onClick={onCancel}
     >
-      <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm">
+      <div
+        className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div
           className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4"
           style={{ backgroundColor: iconBg }}
@@ -91,6 +96,7 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
