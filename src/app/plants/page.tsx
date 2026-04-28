@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 
-const POT_SIZES = [14, 16, 21];
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 
 function todayStr() {
@@ -40,6 +39,51 @@ function fmtDate(d: string) {
 
 import { useConfirm } from "@/components/ui/confirm-modal";
 
+function PotSizeInput({ value, onChange, usedSizes }: { value: number; onChange: (v: number) => void; usedSizes: number[] }) {
+  const [inputVal, setInputVal] = useState(String(value));
+  const [showDrop, setShowDrop] = useState(false);
+
+  const suggestions = [...new Set([...usedSizes, 14, 16, 21])]
+    .filter((s) => String(s).startsWith(inputVal))
+    .sort((a, b) => a - b)
+    .slice(0, 6);
+
+  function commit(val: string) {
+    const n = Number(val);
+    if (n > 0) { onChange(n); setInputVal(String(n)); }
+    setShowDrop(false);
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="number"
+        min={1}
+        className="w-full h-8 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-center"
+        placeholder="🪴 Chậu"
+        value={inputVal}
+        onChange={(e) => { setInputVal(e.target.value); setShowDrop(true); }}
+        onFocus={() => setShowDrop(true)}
+        onBlur={() => setTimeout(() => { commit(inputVal); setShowDrop(false); }, 150)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(inputVal); } }}
+      />
+      {showDrop && suggestions.length > 0 && (
+        <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl  text-sm divide-y divide-gray-50 max-h-40 overflow-y-auto">
+          {suggestions.map((s) => (
+            <li
+              key={s}
+              className="px-3 py-1.5 cursor-pointer hover:bg-blue-50 text-gray-800"
+              onMouseDown={() => { onChange(s); setInputVal(String(s)); setShowDrop(false); }}
+            >
+              Chậu {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function PlantsPage() {
   const [name, setName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,7 +92,7 @@ export default function PlantsPage() {
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
   const [imageUrl, setImageUrl] = useState("");
-  const [potSize, setPotSize] = useState<number>(16);
+  const [potSize, setPotSize] = useState<number>(14);
   const [plantedDate, setPlantedDate] = useState(todayStr());
   const [filterGarden, setFilterGarden] = useState("");
   const [filterFloor, setFilterFloor] = useState("");
@@ -91,7 +135,7 @@ export default function PlantsPage() {
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
-  const [editPotSize, setEditPotSize] = useState<number>(16);
+  const [editPotSize, setEditPotSize] = useState<number>(14);
   const [editDate, setEditDate] = useState("");
   const [editPlatformId, setEditPlatformId] = useState("");
   const [editPlatformSearch, setEditPlatformSearch] = useState("");
@@ -363,7 +407,7 @@ export default function PlantsPage() {
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 />
                 {showSuggestions && name && (
-                  <ul className="absolute z-10 w-full bg-white border border-gray-100 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                  <ul className="absolute z-10 w-full bg-white border border-gray-100 rounded-xl  mt-1 max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
                     {plants
                       ?.filter((p) => p.name.toLowerCase().includes(name.toLowerCase()))
                       .map((p) => (
@@ -405,18 +449,16 @@ export default function PlantsPage() {
               </div>
 
               {/* Pot size + Planted date */}
-              <div className="flex gap-2">
-                <Select
-                  className="w-1/3"
-                  value={potSize}
-                  onChange={(e) => setPotSize(Number(e.target.value))}
-                >
-                  {POT_SIZES.map((s) => (
-                    <option key={s} value={s}>🪴 Chậu {s}</option>
-                  ))}
-                </Select>
+              <div className="flex gap-2 w-full">
+                <div className="w-1/3">
+                  <PotSizeInput
+                    value={potSize}
+                    onChange={setPotSize}
+                    usedSizes={(locations ?? []).map((l) => l.pot_size)}
+                  />
+                </div>
                 <Input
-                  className="w-2/3 h-10"
+                  className="w-2/3 h-8"
                   type="date"
                   value={plantedDate}
                   onChange={(e) => setPlantedDate(e.target.value)}
@@ -447,7 +489,7 @@ export default function PlantsPage() {
                 </Select>
                 <div className="relative w-2/4">
                   <div
-                    className="flex items-center border border-gray-200 rounded-xl bg-white px-2 h-10 gap-1 cursor-text"
+                    className="flex items-center border border-gray-200 rounded-xl bg-white px-2 h-8 gap-1 cursor-text"
                     onClick={() => setShowPlatformDropdown(true)}
                   >
                     <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
@@ -470,7 +512,7 @@ export default function PlantsPage() {
                     )}
                   </div>
                   {showPlatformDropdown && (
-                    <ul className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                    <ul className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl  max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
                       {(filteredPlatforms ?? [])
                         .filter((p) => {
                           if (!platformSearch.trim()) return true;
@@ -721,13 +763,13 @@ export default function PlantsPage() {
                               value={editPrice}
                               onChange={(e) => setEditPrice(e.target.value)}
                             />
-                            <select
-                              className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
-                              value={editPotSize}
-                              onChange={(e) => setEditPotSize(Number(e.target.value))}
-                            >
-                              {POT_SIZES.map((s) => <option key={s} value={s}>Chậu {s}</option>)}
-                            </select>
+                            <div className="w-1/4">
+                              <PotSizeInput
+                                value={editPotSize}
+                                onChange={setEditPotSize}
+                                usedSizes={(locations ?? []).map((l) => l.pot_size)}
+                              />
+                            </div>
                             <input
                               type="date"
                               className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
@@ -760,7 +802,7 @@ export default function PlantsPage() {
                               )}
                             </div>
                             {showEditPlatformDropdown && (
-                              <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                              <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl  max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
                                 {(platforms ?? [])
                                   .filter((p) => {
                                     if (!editPlatformSearch.trim()) return true;

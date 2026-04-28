@@ -34,7 +34,7 @@ export function Toast({ msg, onClose, duration = 5000 }: ToastProps) {
       className={[
         "fixed top-4 left-1/2 -translate-x-1/2",
         "flex items-center gap-2",
-        "rounded-xl px-4 py-3 text-sm font-medium border shadow-lg",
+        "rounded-xl px-4 py-3 text-sm font-medium border ",
         "max-w-sm w-[calc(100%-2rem)]",
         "transition-opacity duration-300",
         fading ? "opacity-0" : "opacity-100",

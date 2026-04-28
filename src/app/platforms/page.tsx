@@ -788,7 +788,7 @@ export default function PlatformsPage() {
                                     )}
                                   </div>
                                   {showMovePlatformDropdown && (
-                                    <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
+                                    <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl  max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
                                       {(platforms ?? [])
                                         .filter((p) => p.id !== detailPlatformId)
                                         .filter((p) => {
