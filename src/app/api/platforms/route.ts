@@ -36,6 +36,30 @@ export async function POST(request: Request) {
   }
 }
 
+// PUT /api/platforms?id=xxx
+export async function PUT(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+
+    const body = await request.json();
+    const { name, garden_id, floor, capacity } = body;
+
+    const { data, error } = await supabase
+      .from("platforms")
+      .update({ name, garden_id, floor, capacity })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data);
+  } catch (e) {
+    return NextResponse.json({ error: `Failed: ${e}` }, { status: 500 });
+  }
+}
+
 // DELETE /api/platforms?id=xxx
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);

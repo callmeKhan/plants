@@ -9,10 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trees, LayoutGrid, Trash2, Plus, ChevronDown, X, Package, Calendar, Leaf, Pencil, Search } from "lucide-react";
+import { Trees, LayoutGrid, Trash2, Plus, ChevronDown, X, Package, Calendar, Leaf, Pencil, Search, Check } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
-
 
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
@@ -35,6 +34,24 @@ export default function PlatformsPage() {
 
   const [openConfirm, confirmModal] = useConfirm();
   const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
+
+  const [editingPlatformName, setEditingPlatformName] = useState(false);
+  const [newPlatformName, setNewPlatformName] = useState("");
+
+  async function handleUpdatePlatformName() {
+    if (!detailPlatformId || !newPlatformName.trim()) return;
+    const p = platforms?.find((x) => x.id === detailPlatformId);
+    if (!p) return;
+    const updated = { ...p, name: newPlatformName.trim() };
+    await db.platforms.update(detailPlatformId, { name: newPlatformName.trim() });
+    await db.syncQueue.add({
+      id: uuidv4(), type: "UPDATE", entity: "platform",
+      payload: updated as Record<string, unknown>,
+      status: "pending", retry_count: 0, created_at: Date.now(),
+    });
+    setEditingPlatformName(false);
+    processQueue().catch(console.error);
+  }
 
   // Move batch state
   const [movingLocId, setMovingLocId] = useState<string | null>(null);
@@ -526,7 +543,7 @@ export default function PlatformsPage() {
           <div
             className="fixed inset-0 z-50 flex flex-col justify-end"
             style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-            onClick={() => setDetailPlatformId(null)}
+            onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); }}
           >
             <div
               className="bg-white rounded-t-3xl shadow-2xl min-h-[85vh] flex flex-col"
@@ -538,14 +555,35 @@ export default function PlatformsPage() {
                 <div className="flex justify-center mb-2">
                   <div className="w-10 h-1 rounded-full bg-gray-200" />
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">{detailPlatform.name}</h2>
-                    {garden && <p className="text-xs text-gray-400">{garden.name} · Tầng {detailPlatform.floor}</p>}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0 mr-2">
+                    {editingPlatformName ? (
+                      <form onSubmit={(e) => { e.preventDefault(); handleUpdatePlatformName(); }} className="flex items-center gap-2">
+                        <Input
+                          autoFocus
+                          className="h-8 text-lg font-bold px-2 py-0 w-full"
+                          value={newPlatformName}
+                          onChange={(e) => setNewPlatformName(e.target.value)}
+                        />
+                        <button type="submit" className="text-blue-600 p-1 shrink-0"><Check className="w-5 h-5"/></button>
+                        <button type="button" onClick={() => setEditingPlatformName(false)} className="text-gray-400 p-1 shrink-0"><X className="w-5 h-5"/></button>
+                      </form>
+                    ) : (
+                      <div className="flex items-center gap-2 text-gray-900">
+                        <h2 className="text-xl font-bold truncate">{detailPlatform.name}</h2>
+                        <button 
+                          onClick={() => { setNewPlatformName(detailPlatform.name); setEditingPlatformName(true); }}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    {garden && <p className="text-xs text-gray-400 mt-1">{garden.name} · Tầng {detailPlatform.floor}</p>}
                   </div>
                   <button
-                    className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
-                    onClick={() => setDetailPlatformId(null)}
+                    className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
+                    onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); }}
                   >
                     <X className="w-4 h-4 text-gray-600" />
                   </button>

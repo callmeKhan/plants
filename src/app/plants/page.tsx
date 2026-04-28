@@ -22,6 +22,7 @@ import {
   Calendar,
   Package,
   Pencil,
+  Check,
 } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 
@@ -61,6 +62,24 @@ export default function PlantsPage() {
   const [editingImage, setEditingImage] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState("");
   const [openConfirm, confirmModal] = useConfirm();
+
+  const [editingPlantName, setEditingPlantName] = useState(false);
+  const [newPlantName, setNewPlantName] = useState("");
+
+  async function handleUpdatePlantName() {
+    if (!detailPlantId || !newPlantName.trim()) return;
+    const plant = plants?.find((p) => p.id === detailPlantId);
+    if (!plant) return;
+    const updated = { ...plant, name: newPlantName.trim() };
+    await db.plants.update(detailPlantId, { name: newPlantName.trim() });
+    await db.syncQueue.add({
+      id: uuidv4(), type: "UPDATE", entity: "plant",
+      payload: updated as Record<string, unknown>,
+      status: "pending", retry_count: 0, created_at: Date.now(),
+    });
+    setEditingPlantName(false);
+    processQueue().catch(console.error);
+  }
 
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState("");
@@ -283,6 +302,7 @@ export default function PlantsPage() {
     setDetailPlantId(null);
     setEditingBatchId(null);
     setEditPlatformSearch("");
+    setEditingPlantName(false);
   }
 
   let plantIds = [...new Set(locations?.map((l) => l.plant_id) ?? [])];
@@ -592,10 +612,33 @@ export default function PlantsPage() {
               <div className="flex justify-center mb-2">
                 <div className="w-10 h-1 rounded-full bg-gray-200" />
               </div>
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">{detailPlant.name}</h2>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 mr-2">
+                  {editingPlantName ? (
+                    <form onSubmit={(e) => { e.preventDefault(); handleUpdatePlantName(); }} className="flex items-center gap-2">
+                      <Input
+                        autoFocus
+                        className="h-8 text-lg font-bold px-2 py-0 w-full"
+                        value={newPlantName}
+                        onChange={(e) => setNewPlantName(e.target.value)}
+                      />
+                      <button type="submit" className="text-emerald-600 p-1 shrink-0"><Check className="w-5 h-5"/></button>
+                      <button type="button" onClick={() => setEditingPlantName(false)} className="text-gray-400 p-1 shrink-0"><X className="w-5 h-5"/></button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-2 text-gray-900">
+                      <h2 className="text-xl font-bold truncate">{detailPlant.name}</h2>
+                      <button 
+                        onClick={() => { setNewPlantName(detailPlant.name); setEditingPlantName(true); }}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button
-                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
                   onClick={() => closeDetail()}
                 >
                   <X className="w-4 h-4 text-gray-600" />
