@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import SyncProvider from "@/components/SyncProvider";
+import { LoadingProvider } from "@/components/LoadingProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,10 +47,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-white text-gray-900">
-        <SyncProvider>
-          <main className="flex-1 pb-20 px-4 pt-4">{children}</main>
-          <BottomNav />
-        </SyncProvider>
+        <LoadingProvider>
+          <SyncProvider>
+            <main className="flex-1 pb-20 px-4 pt-4">{children}</main>
+            <BottomNav />
+          </SyncProvider>
+        </LoadingProvider>
       </body>
     </html>
   );
