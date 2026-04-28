@@ -18,7 +18,6 @@ import {
   ChevronDown,
   Trash2,
   ImageIcon,
-  AlertCircle,
   MapPin,
   Calendar,
   Package,
@@ -38,7 +37,7 @@ function fmtDate(d: string) {
   return `${day}/${m}/${y}`;
 }
 
-type ConfirmModal = { message: string; onConfirm: () => void } | null;
+import { useConfirm } from "@/components/ui/confirm-modal";
 
 export default function PlantsPage() {
   const [name, setName] = useState("");
@@ -61,7 +60,7 @@ export default function PlantsPage() {
   const [detailPlantId, setDetailPlantId] = useState<string | null>(null);
   const [editingImage, setEditingImage] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState("");
-  const [confirmModal, setConfirmModal] = useState<ConfirmModal>(null);
+  const [openConfirm, confirmModal] = useConfirm();
 
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState("");
@@ -89,9 +88,7 @@ export default function PlantsPage() {
     return true;
   });
 
-  function confirm(message: string, onConfirm: () => void) {
-    setConfirmModal({ message, onConfirm });
-  }
+
 
   async function doSubmit() {
     if (!name || !quantity || !platformId) {
@@ -163,7 +160,7 @@ export default function PlantsPage() {
     const qty = Number(quantity);
     const platform = platforms?.find((p) => p.id === platformId);
     const gardenOfPlatform = gardens?.find((g) => g.id === platform?.garden_id);
-    confirm(
+    openConfirm(
       `Thêm ${qty} tấm "${name}" vào ${gardenOfPlatform ? gardenOfPlatform.name + " · " : ""}${platform ? `Tầng ${platform.floor} - ${platform.name}` : platformId}?`,
       doSubmit
     );
@@ -199,7 +196,7 @@ export default function PlantsPage() {
 
   function handleUpdateImage() {
     if (!newImageUrl.trim()) return;
-    confirm("Cập nhật hình ảnh cho cây này?", doUpdateImage);
+    openConfirm("Cập nhật hình ảnh cho cây này?", doUpdateImage);
   }
 
   async function doDeleteBatch(batchId: string, qty: number, plantId: string) {
@@ -743,7 +740,7 @@ export default function PlantsPage() {
                             <button
                               className="flex-1 h-9 rounded-lg text-sm font-semibold text-white"
                               style={{ backgroundColor: "#059669" }}
-                              onClick={() => confirm(
+                              onClick={() => openConfirm(
                                 `Cập nhật đợt này thành ${editQty} tấm, chậu ${editPotSize}?`,
                                 () => doUpdateBatch(b.id, b.quantity, b.plant_id)
                               )}
@@ -789,7 +786,7 @@ export default function PlantsPage() {
                             <button
                               className="ml-2 w-8 h-8 rounded-lg flex items-center justify-center text-red-500 shrink-0"
                               style={{ backgroundColor: "#fef2f2" }}
-                              onClick={() => confirm(
+                              onClick={() => openConfirm(
                                 `Xoá đợt ${b.quantity} tấm tại ${platformLabel(b.platform_id)}?`,
                                 () => doDeleteBatch(b.id, b.quantity, b.plant_id)
                               )}
@@ -808,7 +805,7 @@ export default function PlantsPage() {
               <button
                 className="w-full h-11 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
                 style={{ backgroundColor: "#dc2626" }}
-                onClick={() => confirm(
+                onClick={() => openConfirm(
                   `Xoá toàn bộ cây "${detailPlant.name}" và tất cả ${detailBatches.length} đợt trồng?`,
                   () => doDeletePlant(detailPlant.id)
                 )}
@@ -822,34 +819,7 @@ export default function PlantsPage() {
       )}
 
       {/* Confirm modal */}
-      {confirmModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-5"
-          style={{ zIndex: 60, backgroundColor: "rgba(0,0,0,0.5)" }}
-        >
-          <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: "#fffbeb" }}>
-              <AlertCircle className="w-6 h-6" style={{ color: "#f59e0b" }} />
-            </div>
-            <p className="text-sm text-gray-700 mb-6 text-center leading-relaxed">{confirmModal.message}</p>
-            <div className="flex gap-3">
-              <button
-                className="flex-1 h-11 rounded-xl border border-gray-200 text-sm text-gray-600 font-medium"
-                onClick={() => setConfirmModal(null)}
-              >
-                Huỷ
-              </button>
-              <button
-                className="flex-1 h-11 rounded-xl text-sm text-white font-semibold"
-                style={{ backgroundColor: "#059669" }}
-                onClick={() => { confirmModal.onConfirm(); setConfirmModal(null); }}
-              >
-                Xác nhận
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmModal}
     </div>
   );
 }

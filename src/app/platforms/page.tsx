@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trees, LayoutGrid, Trash2, AlertCircle, Plus, ChevronDown, X, Package, Calendar, Leaf, Pencil, Search } from "lucide-react";
+import { Trees, LayoutGrid, Trash2, Plus, ChevronDown, X, Package, Calendar, Leaf, Pencil, Search } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-modal";
 
-type ConfirmModal = { message: string; onConfirm: () => void } | null;
+
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 function fmtDate(d: string) {
@@ -32,7 +33,7 @@ export default function PlatformsPage() {
   const [capacity, setCapacity] = useState("");
   const [openPlatform, setOpenPlatform] = useState(false);
 
-  const [confirmModal, setConfirmModal] = useState<ConfirmModal>(null);
+  const [openConfirm, confirmModal] = useConfirm();
   const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
 
   // Move batch state
@@ -42,9 +43,7 @@ export default function PlatformsPage() {
   const [movePlatformSearch, setMovePlatformSearch] = useState("");
   const [showMovePlatformDropdown, setShowMovePlatformDropdown] = useState(false);
 
-  function confirm(message: string, onConfirm: () => void) {
-    setConfirmModal({ message, onConfirm });
-  }
+
 
   const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
@@ -109,7 +108,7 @@ export default function PlatformsPage() {
     const plantCount = (locations ?? [])
       .filter((l) => gardenPlatformIds.includes(l.platform_id))
       .reduce((s, l) => s + l.quantity, 0);
-    confirm(
+    openConfirm(
       `Xoá vườn "${gardenName}"?\nHiện có ${plantCount} tấm đang được trồng trong vườn này.`,
       () => doDeleteGarden(id)
     );
@@ -169,7 +168,7 @@ export default function PlatformsPage() {
     const plantCount = (locations ?? [])
       .filter((l) => l.platform_id === id)
       .reduce((s, l) => s + l.quantity, 0);
-    confirm(
+    openConfirm(
       `Xoá sàn "${platformName}"?\nHiện có ${plantCount} tấm đang được trồng trên sàn này.`,
       () => doDeletePlatform(id)
     );
@@ -683,7 +682,7 @@ export default function PlatformsPage() {
                                       const target = platforms?.find((p) => p.id === moveTargetPlatformId);
                                       const g = gardens?.find((g) => g.id === target?.garden_id);
                                       const targetLabel = target ? `${g ? g.name + " | " : ""}Tầng ${target.floor} - ${target.name}` : "";
-                                      confirm(
+                                      openConfirm(
                                         `Chuyển ${moveQty} tấm "${plant?.name ?? ""}" sang ${targetLabel}?`,
                                         () => doMoveBatch(loc.id)
                                       );
@@ -713,34 +712,7 @@ export default function PlatformsPage() {
       })()}
 
       {/* Confirm modal */}
-      {confirmModal && (
-        <div
-          className="fixed inset-0 flex items-center justify-center px-5"
-          style={{ zIndex: 60, backgroundColor: "rgba(0,0,0,0.5)" }}
-        >
-          <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: "#fff7ed" }}>
-              <AlertCircle className="w-6 h-6" style={{ color: "#f97316" }} />
-            </div>
-            <p className="text-sm text-gray-700 mb-6 text-center leading-relaxed whitespace-pre-line">{confirmModal.message}</p>
-            <div className="flex gap-3">
-              <button
-                className="flex-1 h-11 rounded-xl border border-gray-200 text-sm text-gray-600 font-medium"
-                onClick={() => setConfirmModal(null)}
-              >
-                Huỷ
-              </button>
-              <button
-                className="flex-1 h-11 rounded-xl text-sm text-white font-semibold"
-                style={{ backgroundColor: "#2563eb" }}
-                onClick={() => { confirmModal!.onConfirm(); setConfirmModal(null); }}
-              >
-                Xác nhận
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmModal}
 
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
     </div>
