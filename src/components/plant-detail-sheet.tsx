@@ -116,7 +116,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
   }
 
   async function handleUpdateName() {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !plant) return;
     const exists = plants?.some((p) => p.id !== plantId && p.name.trim().toLowerCase() === newName.trim().toLowerCase());
     if (exists) return; // tên đã tồn tại — caller có thể show toast nếu muốn
     const updated = { ...plant, name: newName.trim() };
@@ -131,7 +131,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
   }
 
   async function handleUpdateImage() {
-    if (!newImageUrl.trim()) return;
+    if (!newImageUrl.trim() || !plant) return;
     const updated = { ...plant, image_url: newImageUrl.trim() };
     await db.plants.update(plantId, { image_url: newImageUrl.trim() });
     await db.syncQueue.add({
@@ -156,7 +156,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
 
   async function doUpdateBatch(batchId: string, oldQty: number) {
     const newQty = Number(editQty);
-    if (!newQty || !editPlatformId) return;
+    if (!newQty || !editPlatformId || !plant) return;
     const updates = {
       quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId,
       ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
@@ -182,6 +182,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
   }
 
   async function doDeleteBatch(batchId: string, qty: number) {
+    if (!plant) return;
     await db.plantLocations.delete(batchId);
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "plant_location",
