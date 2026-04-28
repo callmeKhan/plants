@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trees, LayoutGrid, Trash2, Plus, ChevronDown, X, Package, Calendar, Leaf, Pencil, Search, Check } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
+import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
@@ -34,6 +35,7 @@ export default function PlatformsPage() {
 
   const [openConfirm, confirmModal] = useConfirm();
   const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
+  const [detailPlantIdFromPlatform, setDetailPlantIdFromPlatform] = useState<string | null>(null);
 
   const [editingPlatformName, setEditingPlatformName] = useState(false);
   const [newPlatformName, setNewPlatformName] = useState("");
@@ -707,7 +709,10 @@ export default function PlatformsPage() {
                                   onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
                                 />
                               </div>
-                              <div className="flex-1 min-w-0">
+                              <div
+                                className="flex-1 min-w-0 cursor-pointer"
+                                onClick={() => setDetailPlantIdFromPlatform(loc.plant_id)}
+                              >
                                 <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
                                 <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
                                   <Package className="w-3 h-3" />
@@ -861,6 +866,14 @@ export default function PlatformsPage() {
     </div>
 
     {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+
+    {/* Plant detail sheet (opened from platform sheet) */}
+    {detailPlantIdFromPlatform && (
+      <PlantDetailSheet
+        plantId={detailPlantIdFromPlatform}
+        onClose={() => setDetailPlantIdFromPlatform(null)}
+      />
+    )}
     </>
   );
 }
