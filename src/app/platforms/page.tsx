@@ -42,6 +42,13 @@ export default function PlatformsPage() {
     if (!detailPlatformId || !newPlatformName.trim()) return;
     const p = platforms?.find((x) => x.id === detailPlatformId);
     if (!p) return;
+
+    const exists = platforms?.some(x => x.id !== detailPlatformId && x.garden_id === p.garden_id && x.floor === p.floor && x.name.trim().toLowerCase() === newPlatformName.trim().toLowerCase());
+    if (exists) {
+      setToast({ text: "Tên sàn đã tồn tại ở tầng này!", type: "error" });
+      return;
+    }
+
     const updated = { ...p, name: newPlatformName.trim() };
     await db.platforms.update(detailPlatformId, { name: newPlatformName.trim() });
     await db.syncQueue.add({
@@ -142,6 +149,13 @@ export default function PlatformsPage() {
       setToast({ text: "Vườn, tầng, tên và sức chứa là bắt buộc", type: "error" });
       return;
     }
+
+    const exists = platforms?.some(p => p.garden_id === gardenId && p.floor === Number(floor) && p.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (exists) {
+      setToast({ text: "Tên sàn đã tồn tại ở tầng này!", type: "error" });
+      return;
+    }
+
     const platform = {
       id: uuidv4(), garden_id: gardenId, floor: Number(floor),
       name, capacity: Number(capacity),

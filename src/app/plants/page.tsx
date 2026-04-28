@@ -70,6 +70,13 @@ export default function PlantsPage() {
     if (!detailPlantId || !newPlantName.trim()) return;
     const plant = plants?.find((p) => p.id === detailPlantId);
     if (!plant) return;
+
+    const exists = plants?.some((p) => p.id !== detailPlantId && p.name.trim().toLowerCase() === newPlantName.trim().toLowerCase());
+    if (exists) {
+      setMsg({ text: "Tên hoa đã tồn tại!", type: "error" });
+      return;
+    }
+
     const updated = { ...plant, name: newPlantName.trim() };
     await db.plants.update(detailPlantId, { name: newPlantName.trim() });
     await db.syncQueue.add({
@@ -117,7 +124,7 @@ export default function PlantsPage() {
 
     const qty = Number(quantity);
     const resolvedId = selectedPlantId
-      ?? plants?.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
+      ?? plants?.find((p) => p.name.toLowerCase() === name.trim().toLowerCase())?.id
       ?? null;
 
     let plant = resolvedId ? plants?.find((p) => p.id === resolvedId) ?? null : null;
