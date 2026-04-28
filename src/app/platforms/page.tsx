@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
@@ -38,6 +38,14 @@ export default function PlatformsPage() {
   const [editingPlatformName, setEditingPlatformName] = useState(false);
   const [newPlatformName, setNewPlatformName] = useState("");
 
+  const [editingCapacity, setEditingCapacity] = useState(false);
+  const [newCapacity, setNewCapacity] = useState("");
+
+  useEffect(() => {
+    document.body.style.overflow = detailPlatformId ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [detailPlatformId]);
+
   async function handleUpdatePlatformName() {
     if (!detailPlatformId || !newPlatformName.trim()) return;
     const p = platforms?.find((x) => x.id === detailPlatformId);
@@ -57,6 +65,30 @@ export default function PlatformsPage() {
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
     setEditingPlatformName(false);
+    processQueue().catch(console.error);
+  }
+
+  async function handleUpdateCapacity() {
+    if (!detailPlatformId) return;
+    const val = Number(newCapacity);
+    if (isNaN(val) || val < 0) { setToast({ text: "Sức chứa không hợp lệ", type: "error" }); return; }
+    const p = platforms?.find((x) => x.id === detailPlatformId);
+    if (!p) return;
+    const currentUsed = (locations ?? [])
+      .filter((l) => l.platform_id === detailPlatformId)
+      .reduce((s, l) => s + l.quantity, 0);
+    if (val < currentUsed) {
+      setToast({ text: `Sức chứa không được nhỏ hơn số cây hiện có (${currentUsed} tấm)`, type: "error" });
+      return;
+    }
+    const updated = { ...p, capacity: val };
+    await db.platforms.update(detailPlatformId, { capacity: val });
+    await db.syncQueue.add({
+      id: uuidv4(), type: "UPDATE", entity: "platform",
+      payload: updated as Record<string, unknown>,
+      status: "pending", retry_count: 0, created_at: Date.now(),
+    });
+    setEditingCapacity(false);
     processQueue().catch(console.error);
   }
 
@@ -270,6 +302,7 @@ export default function PlatformsPage() {
   }
 
   return (
+    <>
     <div className="max-w-lg mx-auto space-y-5">
 
       {/* ── VƯỜN ── */}
@@ -557,7 +590,7 @@ export default function PlatformsPage() {
           <div
             className="fixed inset-0 z-50 flex flex-col justify-end"
             style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-            onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); }}
+            onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); setEditingCapacity(false); }}
           >
             <div
               className="bg-white rounded-t-3xl shadow-2xl min-h-[85vh] flex flex-col"
@@ -597,7 +630,7 @@ export default function PlatformsPage() {
                   </div>
                   <button
                     className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                    onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); }}
+                    onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); setEditingCapacity(false); }}
                   >
                     <X className="w-4 h-4 text-gray-600" />
                   </button>
@@ -612,7 +645,33 @@ export default function PlatformsPage() {
                   <div className="flex items-center gap-2">
                     <Package className="w-4 h-4" style={{ color: "#2563eb" }} />
                     <span className="text-sm font-medium" style={{ color: "#1e3a8a" }}>Sức chứa</span>
-                    <span className="ml-auto text-lg font-bold" style={{ color: "#2563eb" }}>{used}/{detailPlatform.capacity}</span>
+                    <div className="ml-auto flex items-center gap-1">
+                      {editingCapacity ? (
+                        <form onSubmit={(e) => { e.preventDefault(); handleUpdateCapacity(); }} className="flex items-center gap-1">
+                          <input
+                            autoFocus
+                            type="number"
+                            min={0}
+                            step="any"
+                            className="w-20 h-7 border border-blue-300 rounded-lg px-2 text-sm font-bold text-blue-700 bg-white outline-none text-center"
+                            value={newCapacity}
+                            onChange={(e) => setNewCapacity(e.target.value)}
+                          />
+                          <button type="submit" className="text-blue-600 p-1"><Check className="w-4 h-4"/></button>
+                          <button type="button" onClick={() => setEditingCapacity(false)} className="text-gray-400 p-1"><X className="w-4 h-4"/></button>
+                        </form>
+                      ) : (
+                        <>
+                          <span className="text-lg font-bold" style={{ color: "#2563eb" }}>{used}/{detailPlatform.capacity}</span>
+                          <button
+                            onClick={() => { setNewCapacity(String(detailPlatform.capacity)); setEditingCapacity(true); }}
+                            className="text-blue-300 hover:text-blue-500 p-0.5"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
                     <div
@@ -799,8 +858,9 @@ export default function PlatformsPage() {
 
       {/* Confirm modal */}
       {confirmModal}
-
-      {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
     </div>
+
+    {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+    </>
   );
 }
