@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
@@ -72,6 +72,18 @@ interface PlantDetailSheetProps {
 
 export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
   const [openConfirm, confirmModal] = useConfirm();
+
+  // Exit animation
+  const [isClosing, setIsClosing] = useState(false);
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+  }, []);
+  const handleSheetAnimEnd = useCallback((e: React.AnimationEvent) => {
+    if (e.animationName === "sheetSlideDown") {
+      setIsClosing(false);
+      onClose();
+    }
+  }, [onClose]);
 
   // Edit name
   const [editingName, setEditingName] = useState(false);
@@ -234,14 +246,14 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
   return (
     <>
       <div
-        className="fixed inset-0 z-[60] flex flex-col justify-end"
-        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-        onClick={() => { onClose(); setEditingName(false); setEditingImage(false); }}
+        className={`fixed inset-0 z-[60] flex flex-col justify-end sheet-backdrop${isClosing ? " closing" : ""}`}
+        onClick={() => { handleClose(); setEditingName(false); setEditingImage(false); }}
       >
         <div
-          className="bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col"
+          className={`bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col sheet-panel${isClosing ? " closing" : ""}`}
           style={{ marginBottom: "64px" }}
           onClick={(e) => e.stopPropagation()}
+          onAnimationEnd={handleSheetAnimEnd}
         >
           {/* Header */}
           <div className="sticky top-0 bg-white rounded-t-3xl z-10 px-5 pt-3 pb-3 border-b border-gray-100">
@@ -275,7 +287,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
               </div>
               <button
                 className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                onClick={() => { onClose(); setEditingName(false); setEditingImage(false); }}
+                onClick={() => { handleClose(); setEditingName(false); setEditingImage(false); }}
               >
                 <X className="w-4 h-4 text-gray-600" />
               </button>

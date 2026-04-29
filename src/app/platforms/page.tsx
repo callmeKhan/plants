@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
@@ -36,7 +36,20 @@ export default function PlatformsPage() {
 
   const [openConfirm, confirmModal] = useConfirm();
   const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
+  const [closingSheet, setClosingSheet] = useState(false);
   const [detailPlantIdFromPlatform, setDetailPlantIdFromPlatform] = useState<string | null>(null);
+
+  const handleCloseSheet = useCallback(() => {
+    setClosingSheet(true);
+  }, []);
+  const handleSheetAnimEnd = useCallback((e: React.AnimationEvent) => {
+    if (e.animationName === "sheetSlideDown") {
+      setClosingSheet(false);
+      setDetailPlatformId(null);
+      setEditingPlatformName(false);
+      setEditingCapacity(false);
+    }
+  }, []);
 
   const [editingPlatformName, setEditingPlatformName] = useState(false);
   const [newPlatformName, setNewPlatformName] = useState("");
@@ -327,8 +340,8 @@ export default function PlatformsPage() {
           />
         </button>
 
-        {openGarden && (
-          <>
+        <div className={`collapse-grid ${openGarden ? "open" : ""}`}>
+        <div className="collapse-content">
             <form onSubmit={handleAddGarden} className="flex gap-2 mb-3">
               <Input
                 placeholder="🌳 Tên vườn mới"
@@ -375,8 +388,8 @@ export default function PlatformsPage() {
                 })}
               </div>
             )}
-          </>
-        )}
+        </div>
+        </div>
       </div>
 
       {/* ── SÀN ── */}
@@ -398,7 +411,8 @@ export default function PlatformsPage() {
           />
         </button>
 
-        {openPlatform && (
+        <div className={`collapse-grid ${openPlatform ? "open" : ""}`}>
+        <div className="collapse-content">
           <Card className="mb-1">
             <CardContent className="pt-4">
               <form onSubmit={handleAdd} className="space-y-3">
@@ -447,7 +461,8 @@ export default function PlatformsPage() {
               </form>
             </CardContent>
           </Card>
-        )}
+        </div>
+        </div>
 
         {/* Platform list by garden */}
         {(platforms?.length ?? 0) > 0 && (
@@ -484,7 +499,8 @@ export default function PlatformsPage() {
                           Tầng {floorNum}
                           <Badge variant="secondary" className="h-4">{floorPlatforms.length}</Badge>
                         </button>
-                        {!isCollapsed && (
+                        <div className={`collapse-grid ${!isCollapsed ? "open" : ""}`}>
+                        <div className="collapse-content">
                           <div className="flex gap-3 items-start">
                             {[
                               { prefix: 'T', items: floorPlatforms.filter(p => p.name.toUpperCase().startsWith('T')) },
@@ -542,7 +558,8 @@ export default function PlatformsPage() {
                               </div>
                             ))}
                           </div>
-                        )}
+                        </div>
+                        </div>
                       </div>
                     );
                   })}
@@ -591,14 +608,14 @@ export default function PlatformsPage() {
         const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
         return (
           <div
-            className="fixed inset-0 z-50 flex flex-col justify-end"
-            style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-            onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); setEditingCapacity(false); }}
+            className={`fixed inset-0 z-50 flex flex-col justify-end sheet-backdrop${closingSheet ? " closing" : ""}`}
+            onClick={handleCloseSheet}
           >
             <div
-              className="bg-white rounded-t-3xl shadow-2xl min-h-[85vh] flex flex-col"
+              className={`bg-white rounded-t-3xl shadow-2xl min-h-[85vh] flex flex-col sheet-panel${closingSheet ? " closing" : ""}`}
               style={{ marginBottom: "64px" }}
               onClick={(e) => e.stopPropagation()}
+              onAnimationEnd={handleSheetAnimEnd}
             >
               {/* Header */}
               <div className="sticky top-0 bg-white rounded-t-3xl z-10 px-5 pt-3 pb-3 border-b border-gray-100">
@@ -633,7 +650,7 @@ export default function PlatformsPage() {
                   </div>
                   <button
                     className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                    onClick={() => { setDetailPlatformId(null); setEditingPlatformName(false); setEditingCapacity(false); }}
+                    onClick={handleCloseSheet}
                   >
                     <X className="w-4 h-4 text-gray-600" />
                   </button>

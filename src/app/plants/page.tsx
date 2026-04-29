@@ -256,8 +256,9 @@ function PlantsPageInner() {
       {/* Toast */}
       {msg && <Toast msg={msg} onClose={() => setMsg(null)} />}
 
-      {/* Add plant form — collapsed by default */}
-      {openForm && (
+      {/* Add plant form — collapse animated */}
+      <div className={`collapse-grid ${openForm ? "open" : ""}`}>
+      <div className="collapse-content">
         <Card>
           <CardContent className="pt-4">
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -420,7 +421,8 @@ function PlantsPageInner() {
             </form>
           </CardContent>
         </Card>
-      )}
+      </div>
+      </div>
 
       {/* List section */}
       <div className="space-y-3">

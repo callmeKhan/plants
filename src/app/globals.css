@@ -52,6 +52,51 @@ textarea {
 .duration-200 { animation-duration: 200ms; }
 .duration-300 { animation-duration: 300ms; }
 
+/* Collapsible section using grid trick */
+.collapse-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.collapse-grid.open {
+  grid-template-rows: 1fr;
+}
+.collapse-grid > .collapse-content {
+  overflow: hidden;
+}
+
+/* Bottom sheet animations */
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes backdropFadeIn {
+  from { background-color: rgba(0,0,0,0); }
+  to { background-color: rgba(0,0,0,0.45); }
+}
+.sheet-backdrop {
+  animation: backdropFadeIn 200ms ease-out forwards;
+}
+.sheet-panel {
+  animation: sheetSlideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Exit animations */
+@keyframes sheetSlideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+@keyframes backdropFadeOut {
+  from { background-color: rgba(0,0,0,0.45); }
+  to { background-color: rgba(0,0,0,0); }
+}
+.sheet-backdrop.closing {
+  animation: backdropFadeOut 200ms ease-in forwards;
+}
+.sheet-panel.closing {
+  animation: sheetSlideDown 200ms ease-in forwards;
+}
+
 /* Material Symbols icon font (self-hosted via Fontsource) */
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined Variable', sans-serif;
