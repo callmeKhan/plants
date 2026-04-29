@@ -314,8 +314,8 @@ function PlantsPageInner() {
               </div>
 
               {/* Pot size + Planted date */}
-              <div className="flex gap-2 w-full">
-                <div className="w-1/3">
+              <div className="grid gap-2 mb-0" style={{ gridTemplateColumns: "1fr 2fr", gridTemplateRows: "auto auto" }}>
+                <div>
                   <PotSizeInput
                     value={potSize}
                     onChange={setPotSize}
@@ -323,7 +323,6 @@ function PlantsPageInner() {
                   />
                 </div>
                 <Input
-                  className="w-2/3 h-8"
                   type="date"
                   value={plantedDate}
                   onChange={(e) => setPlantedDate(e.target.value)}
@@ -331,9 +330,8 @@ function PlantsPageInner() {
               </div>
 
               {/* Location selects */}
-              <div className="flex gap-2">
+              <div className="grid gap-2 mt-0" style={{ gridTemplateColumns: "1fr 2fr", gridTemplateRows: "auto auto" }}>
                 <Select
-                  className="w-1/4"
                   value={filterGarden}
                   onChange={(e) => { setParams({ garden: e.target.value, floor: "", platform: "" }); }}
                 >
@@ -342,24 +340,14 @@ function PlantsPageInner() {
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </Select>
-                <Select
-                  className="w-1/4"
-                  value={filterFloor}
-                  onChange={(e) => { setParams({ floor: e.target.value, platform: "" }); }}
-                >
-                  <option value="">Tầng</option>
-                  {floorsInGarden.map((f) => (
-                    <option key={f} value={f}>Tầng {f}</option>
-                  ))}
-                </Select>
-                <div className="relative w-2/4">
+                <div className="relative" style={{ gridRow: "1 / 3", gridColumn: "2" }}>
                   <div
-                    className="flex items-center border border-gray-200 rounded-xl bg-white px-2 h-8 gap-1 cursor-text"
+                    className="flex items-center border border-gray-200 rounded-xl bg-white h-full px-3 gap-1 cursor-text"
                     onClick={() => setShowPlatformDropdown(true)}
                   >
                     <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                     <input
-                      className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0"
+                      className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0 w-full"
                       placeholder={platformId ? platformLabel(platformId) : "— Sàn —"}
                       value={platformSearch}
                       onChange={(e) => { setPlatformSearch(e.target.value); setShowPlatformDropdown(true); }}
@@ -410,6 +398,15 @@ function PlantsPageInner() {
                     </ul>
                   )}
                 </div>
+                <Select
+                  value={filterFloor}
+                  onChange={(e) => { setParams({ floor: e.target.value, platform: "" }); }}
+                >
+                  <option value="">Tầng</option>
+                  {floorsInGarden.map((f) => (
+                    <option key={f} value={f}>Tầng {f}</option>
+                  ))}
+                </Select>
               </div>
 
               <button
