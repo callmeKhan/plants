@@ -14,6 +14,7 @@ import { Trees, LayoutGrid, Trash2, Plus, ChevronDown, X, Package, Calendar, Lea
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
+import { Collapse } from "@/components/ui/collapse";
 
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
@@ -340,8 +341,7 @@ export default function PlatformsPage() {
           />
         </button>
 
-        <div className={`collapse-grid ${openGarden ? "open" : ""}`}>
-        <div className="collapse-content">
+        <Collapse open={openGarden}>
             <form onSubmit={handleAddGarden} className="flex gap-2 mb-3">
               <Input
                 placeholder="🌳 Tên vườn mới"
@@ -388,8 +388,7 @@ export default function PlatformsPage() {
                 })}
               </div>
             )}
-        </div>
-        </div>
+        </Collapse>
       </div>
 
       {/* ── SÀN ── */}
@@ -411,8 +410,7 @@ export default function PlatformsPage() {
           />
         </button>
 
-        <div className={`collapse-grid ${openPlatform ? "open" : ""}`}>
-        <div className="collapse-content">
+        <Collapse open={openPlatform}>
           <Card className="mb-1">
             <CardContent className="pt-4">
               <form onSubmit={handleAdd} className="space-y-3">
@@ -461,8 +459,7 @@ export default function PlatformsPage() {
               </form>
             </CardContent>
           </Card>
-        </div>
-        </div>
+        </Collapse>
 
         {/* Platform list by garden */}
         {(platforms?.length ?? 0) > 0 && (
@@ -499,8 +496,7 @@ export default function PlatformsPage() {
                           Tầng {floorNum}
                           <Badge variant="secondary" className="h-4">{floorPlatforms.length}</Badge>
                         </button>
-                        <div className={`collapse-grid ${!isCollapsed ? "open" : ""}`}>
-                        <div className="collapse-content">
+                        <Collapse open={!isCollapsed}>
                           <div className="flex gap-3 items-start">
                             {[
                               { prefix: 'T', items: floorPlatforms.filter(p => p.name.toUpperCase().startsWith('T')) },
@@ -558,8 +554,7 @@ export default function PlatformsPage() {
                               </div>
                             ))}
                           </div>
-                        </div>
-                        </div>
+                        </Collapse>
                       </div>
                     );
                   })}

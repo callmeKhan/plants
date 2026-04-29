@@ -20,6 +20,7 @@ import {
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
+import { Collapse } from "@/components/ui/collapse";
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 
@@ -257,8 +258,7 @@ function PlantsPageInner() {
       {msg && <Toast msg={msg} onClose={() => setMsg(null)} />}
 
       {/* Add plant form — collapse animated */}
-      <div className={`collapse-grid ${openForm ? "open" : ""}`}>
-      <div className="collapse-content">
+      <Collapse open={openForm}>
         <Card>
           <CardContent className="pt-4">
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -421,8 +421,7 @@ function PlantsPageInner() {
             </form>
           </CardContent>
         </Card>
-      </div>
-      </div>
+      </Collapse>
 
       {/* List section */}
       <div className="space-y-3">
