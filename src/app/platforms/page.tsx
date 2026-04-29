@@ -116,11 +116,11 @@ export default function PlatformsPage() {
   const [movePlatformSearch, setMovePlatformSearch] = useState("");
   const [showMovePlatformDropdown, setShowMovePlatformDropdown] = useState(false);
 
-  const [collapsedFloors, setCollapsedFloors] = useState<Record<string, boolean>>({});
+  const [expandedFloors, setExpandedFloors] = useState<Record<string, boolean>>({});
 
   const toggleFloor = (gardenId: string, floorNum: number) => {
     const key = `${gardenId}-${floorNum}`;
-    setCollapsedFloors(prev => ({ ...prev, [key]: !prev[key] }));
+    setExpandedFloors(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
@@ -318,6 +318,28 @@ export default function PlatformsPage() {
     processQueue().catch(console.error);
   }
 
+  async function doDeleteBatchFromPlatform(locId: string) {
+    const loc = (locations ?? []).find((l) => l.id === locId);
+    if (!loc) return;
+    await db.plantLocations.delete(locId);
+    await db.syncQueue.add({
+      id: uuidv4(), type: "DELETE", entity: "plant_location",
+      payload: { id: locId }, status: "pending", retry_count: 0, created_at: Date.now(),
+    });
+    const remaining = await db.plantLocations.where("plant_id").equals(loc.plant_id).count();
+    if (remaining === 0) {
+      await db.plants.delete(loc.plant_id);
+      await db.syncQueue.add({
+        id: uuidv4(), type: "DELETE", entity: "plant",
+        payload: { id: loc.plant_id }, status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+      setToast({ text: "Đã xoá đợt & cây khỏi hệ thống", type: "success" });
+    } else {
+      setToast({ text: "Đã xoá đợt khỏi sàn", type: "success" });
+    }
+    processQueue().catch(console.error);
+  }
+
   return (
     <>
     <div className="max-w-lg mx-auto space-y-5">
@@ -482,7 +504,7 @@ export default function PlatformsPage() {
                   {floors.map((floorNum) => {
                     const floorPlatforms = gardenPlatforms.filter((p) => p.floor === floorNum);
                     const floorKey = `${g.id}-${floorNum}`;
-                    const isCollapsed = collapsedFloors[floorKey];
+                    const isExpanded = expandedFloors[floorKey];
                     return (
                       <div key={floorNum} className="pl-4 border-l-2 border-gray-100 space-y-1.5 mb-4">
                         <button
@@ -491,12 +513,12 @@ export default function PlatformsPage() {
                         >
                           <ChevronDown
                             className="w-3.5 h-3.5 transition-transform"
-                            style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
+                            style={{ transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)" }}
                           />
                           Tầng {floorNum}
                           <Badge variant="secondary" className="h-4">{floorPlatforms.length}</Badge>
                         </button>
-                        <Collapse open={!isCollapsed}>
+                        <Collapse open={!!isExpanded}>
                           <div className="flex gap-3 items-start">
                             {[
                               { prefix: 'T', items: floorPlatforms.filter(p => p.name.toUpperCase().startsWith('T')) },
@@ -751,25 +773,40 @@ export default function PlatformsPage() {
                                   <span>{fmtDate(loc.planted_date)}</span>
                                 </div>
                               </div>
-                              <button
-                                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                                style={{ backgroundColor: isMoving ? "#dbeafe" : "#fff7ed" }}
-                                onClick={() => {
-                                  if (isMoving) {
-                                    setMovingLocId(null);
-                                    setMoveTargetPlatformId("");
-                                    setMoveQty("");
-                                    setMovePlatformSearch("");
-                                  } else {
-                                    setMovingLocId(loc.id);
-                                    setMoveTargetPlatformId("");
-                                    setMoveQty(String(loc.quantity));
-                                    setMovePlatformSearch("");
-                                  }
-                                }}
-                              >
-                                <Pencil className="w-4 h-4" style={{ color: isMoving ? "#2563eb" : "#f97316" }} />
-                              </button>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                  style={{ backgroundColor: isMoving ? "#dbeafe" : "#fff7ed" }}
+                                  onClick={() => {
+                                    if (isMoving) {
+                                      setMovingLocId(null);
+                                      setMoveTargetPlatformId("");
+                                      setMoveQty("");
+                                      setMovePlatformSearch("");
+                                    } else {
+                                      setMovingLocId(loc.id);
+                                      setMoveTargetPlatformId("");
+                                      setMoveQty(String(loc.quantity));
+                                      setMovePlatformSearch("");
+                                    }
+                                  }}
+                                >
+                                  <Pencil className="w-4 h-4" style={{ color: isMoving ? "#2563eb" : "#f97316" }} />
+                                </button>
+                                <button
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors"
+                                  onClick={() => {
+                                    const allLocs = (locations ?? []).filter((l) => l.plant_id === loc.plant_id);
+                                    const isLast = allLocs.length === 1;
+                                    openConfirm(
+                                      `Xoá ${loc.quantity} tấm "${plant?.name ?? ""}" khỏi sàn?${isLast ? "\nĐây là đợt cuối cùng — cây sẽ bị xoá khỏi hệ thống." : ""}`,
+                                      () => doDeleteBatchFromPlatform(loc.id)
+                                    );
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
 
                             {/* Inline move UI */}
