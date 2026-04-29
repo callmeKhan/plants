@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
@@ -78,7 +79,24 @@ function PotSizeInput({ value, onChange, usedSizes }: { value: number; onChange:
   );
 }
 
-export default function PlantsPage() {
+function PlantsPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const filterGarden = searchParams.get("garden") ?? "";
+  const filterFloor = searchParams.get("floor") ?? "";
+  const platformId = searchParams.get("platform") ?? "";
+
+  const setParams = useCallback((updates: Record<string, string>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) params.set(k, v);
+      else params.delete(k);
+    }
+    router.replace(pathname + "?" + params.toString(), { scroll: false });
+  }, [searchParams, router, pathname]);
+
   const [name, setName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
@@ -88,13 +106,10 @@ export default function PlantsPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [potSize, setPotSize] = useState<number>(14);
   const [plantedDate, setPlantedDate] = useState(todayStr());
-  const [filterGarden, setFilterGarden] = useState("");
-  const [filterFloor, setFilterFloor] = useState("");
-  const [platformId, setPlatformId] = useState("");
   const [platformSearch, setPlatformSearch] = useState("");
   const [showPlatformDropdown, setShowPlatformDropdown] = useState(false);
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
-  const [openForm, setOpenForm] = useState(false);
+  const [openForm, setOpenForm] = useState(() => searchParams.get("openForm") === "1");
 
   const [detailPlantId, setDetailPlantId] = useState<string | null>(null);
   const [openConfirm, confirmModal] = useConfirm();
@@ -175,7 +190,7 @@ export default function PlantsPage() {
     });
 
     setName(""); setSelectedPlantId(null); setQuantity(""); setPrice("");
-    setImageUrl(""); setPlatformId(""); setPlantedDate(todayStr());
+    setImageUrl(""); setPlantedDate(todayStr());
     setMsg({ text: "Đã lưu cây và vị trí thành công!", type: "success" });
     processQueue().catch(console.error);
   }
@@ -199,7 +214,9 @@ export default function PlantsPage() {
 
   function platformLabel(id: string) {
     const p = platforms?.find((p) => p.id === id);
-    return p ? `S\u00e0n ${p.name}` : id;
+    if (!p) return id;
+    const used = (locations ?? []).filter((l) => l.platform_id === id).reduce((s, l) => s + l.quantity, 0);
+    return `S\u00e0n ${p.name} (${p.capacity - used})`;
   }
 
   function platformLabelWithGarden(id: string) {
@@ -318,7 +335,7 @@ export default function PlantsPage() {
                 <Select
                   className="w-1/4"
                   value={filterGarden}
-                  onChange={(e) => { setFilterGarden(e.target.value); setFilterFloor(""); setPlatformId(""); }}
+                  onChange={(e) => { setParams({ garden: e.target.value, floor: "", platform: "" }); }}
                 >
                   <option value="">Vườn</option>
                   {gardens?.map((g) => (
@@ -328,7 +345,7 @@ export default function PlantsPage() {
                 <Select
                   className="w-1/4"
                   value={filterFloor}
-                  onChange={(e) => { setFilterFloor(e.target.value); setPlatformId(""); }}
+                  onChange={(e) => { setParams({ floor: e.target.value, platform: "" }); }}
                 >
                   <option value="">Tầng</option>
                   {floorsInGarden.map((f) => (
@@ -353,7 +370,7 @@ export default function PlantsPage() {
                       <button
                         type="button"
                         className="shrink-0 text-gray-400 hover:text-gray-600"
-                        onMouseDown={(e) => { e.preventDefault(); setPlatformId(""); setPlatformSearch(""); }}
+                        onMouseDown={(e) => { e.preventDefault(); setParams({ platform: "" }); setPlatformSearch(""); }}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -376,7 +393,7 @@ export default function PlantsPage() {
                             <li
                               key={p.id}
                               className={`px-3 py-2 cursor-pointer hover:bg-emerald-50 ${platformId === p.id ? "bg-emerald-50 font-medium text-emerald-700" : "text-gray-800"}`}
-                              onMouseDown={() => { setPlatformId(p.id); setPlatformSearch(""); setShowPlatformDropdown(false); }}
+                              onMouseDown={() => { setParams({ platform: p.id }); setPlatformSearch(""); setShowPlatformDropdown(false); }}
                             >
                               {label}
                             </li>
@@ -503,5 +520,13 @@ export default function PlantsPage() {
       {/* Confirm modal */}
       {confirmModal}
     </div>
+  );
+}
+
+export default function PlantsPage() {
+  return (
+    <Suspense>
+      <PlantsPageInner />
+    </Suspense>
   );
 }

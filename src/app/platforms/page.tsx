@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
@@ -686,7 +687,23 @@ export default function PlatformsPage() {
 
                 {/* Plants list */}
                 <div>
-                  <h3 className="font-semibold text-gray-800 mb-2 text-sm">Cây đang trồng ({platformLocs.length} đợt)</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-gray-800 text-sm">Cây đang trồng ({platformLocs.length} đợt)</h3>
+                    {free > 0 ? (
+                      <Link
+                        href={`/plants?garden=${detailPlatform.garden_id}&floor=${detailPlatform.floor}&platform=${detailPlatform.id}&openForm=1`}
+                        className="flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Thêm cây
+                      </Link>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-gray-300 px-2 py-1 cursor-not-allowed">
+                        <Plus className="w-3.5 h-3.5" />
+                        Đã đầy
+                      </span>
+                    )}
+                  </div>
                   {platformLocs.length === 0 ? (
                     <div className="flex flex-col items-center py-8 text-gray-400">
                       <Leaf className="w-8 h-8 mb-2 opacity-30" />
