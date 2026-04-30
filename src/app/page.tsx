@@ -62,6 +62,8 @@ export default function Dashboard() {
 
   // ── Derived stats ──
   const totalPlants = (locations ?? []).reduce((s, l) => s + l.quantity, 0);
+  const totalCapacity = (platforms ?? []).reduce((s, p) => s + p.capacity, 0);
+  const fillPct = totalCapacity > 0 ? Math.round((totalPlants / totalCapacity) * 100) : 0;
   const totalPlatforms = platforms?.length ?? 0;
   const fullPlatforms = (platforms ?? []).filter((p) => {
     const used = (locations ?? [])
@@ -112,22 +114,47 @@ export default function Dashboard() {
             <div className="flex justify-center mb-1">
               <Package className="w-4 h-4 text-emerald-500" />
             </div>
-            <p className="text-xl font-bold text-gray-900">{totalPlants}</p>
-            <p className="text-[11px] text-gray-400">Tổng tấm</p>
+            <p className="text-xl font-bold text-gray-900">
+              {totalPlants}
+              <span className="text-sm font-medium text-gray-400">/{totalCapacity}</span>
+            </p>
+            <div className="flex items-center justify-center gap-1.5 mt-0.5">
+              <div className="flex-1 max-w-[60px] h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${Math.min(fillPct, 100)}%`, backgroundColor: fillColor(fillPct) }}
+                />
+              </div>
+              <span className="text-[10px] font-semibold" style={{ color: fillColor(fillPct) }}>
+                {fillPct}%
+              </span>
+            </div>
           </div>
           <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 text-center">
             <div className="flex justify-center mb-1">
               <Trees className="w-4 h-4 text-blue-500" />
             </div>
             <p className="text-xl font-bold text-gray-900">
-              {totalPlatforms}
-              {fullPlatforms > 0 && (
-                <span className="text-xs font-medium text-red-400 ml-1">
-                  ({fullPlatforms} đầy)
-                </span>
-              )}
+              {fullPlatforms}
+              <span className="text-sm font-medium text-gray-400">/{totalPlatforms}</span>
             </p>
-            <p className="text-[11px] text-gray-400">Sàn</p>
+            <div className="flex items-center justify-center gap-1.5 mt-0.5">
+              <div className="flex-1 max-w-[60px] h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${totalPlatforms > 0 ? Math.round((fullPlatforms / totalPlatforms) * 100) : 0}%`,
+                    backgroundColor: fillColor(totalPlatforms > 0 ? Math.round((fullPlatforms / totalPlatforms) * 100) : 0),
+                  }}
+                />
+              </div>
+              <span
+                className="text-[10px] font-semibold"
+                style={{ color: fillColor(totalPlatforms > 0 ? Math.round((fullPlatforms / totalPlatforms) * 100) : 0) }}
+              >
+                {totalPlatforms > 0 ? Math.round((fullPlatforms / totalPlatforms) * 100) : 0}%
+              </span>
+            </div>
           </div>
           <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 text-center">
             <div className="flex justify-center mb-1">
