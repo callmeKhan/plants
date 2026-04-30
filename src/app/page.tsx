@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [activeGardenId, setActiveGardenId] = useState<string | null>(null);
   const [topN, setTopN] = useState(5);
   const [sortMode, setSortMode] = useState<"quantity" | "platforms" | "price" | "batches">("quantity");
+  const [sortAsc, setSortAsc] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const openTooltip = useCallback((id: string, btnEl: HTMLButtonElement) => {
@@ -83,12 +84,13 @@ export default function Dashboard() {
       const batchCount = batches.length;
       return { ...p, total, platformCount, maxPrice, batchCount };
     })
-    .filter((p) => p.total > 0)
     .sort((a, b) => {
-      if (sortMode === "platforms") return b.platformCount - a.platformCount;
-      if (sortMode === "price") return b.maxPrice - a.maxPrice;
-      if (sortMode === "batches") return b.batchCount - a.batchCount;
-      return b.total - a.total;
+      let diff = 0;
+      if (sortMode === "platforms") diff = b.platformCount - a.platformCount;
+      else if (sortMode === "price") diff = b.maxPrice - a.maxPrice;
+      else if (sortMode === "batches") diff = b.batchCount - a.batchCount;
+      else diff = b.total - a.total;
+      return sortAsc ? -diff : diff;
     })
     .slice(0, topN);
 
@@ -323,7 +325,10 @@ export default function Dashboard() {
               ] as const).map((opt) => (
                 <button
                   key={opt.key}
-                  onClick={() => setSortMode(opt.key)}
+                  onClick={() => {
+                    if (sortMode === opt.key) setSortAsc((v) => !v);
+                    else { setSortMode(opt.key); setSortAsc(false); }
+                  }}
                   className="px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all"
                   style={{
                     backgroundColor: sortMode === opt.key ? "#2563eb" : "#f3f4f6",
@@ -331,6 +336,7 @@ export default function Dashboard() {
                   }}
                 >
                   {opt.label}
+                  <span className="ml-0.5">{sortMode === opt.key && sortAsc ? "↑" : "↓"}</span>
                 </button>
               ))}
             </div>

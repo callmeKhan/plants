@@ -226,7 +226,11 @@ function PlantsPageInner() {
     return `${gardens?.find((g) => g.id === p.garden_id)?.name + " | "}T\u1ea7ng ${p.floor} - ${p.name}`;
   }
 
-  let plantIds = [...new Set(locations?.map((l) => l.plant_id) ?? [])];
+  const locationPlantIds = new Set(locations?.map((l) => l.plant_id) ?? []);
+  let plantIds = [...new Set([
+    ...locationPlantIds,
+    ...(plants?.map((p) => p.id) ?? []),
+  ])];
   if (searchQuery.trim()) {
     plantIds = plantIds.filter((pid) => {
       const plant = plants?.find((p) => p.id === pid);

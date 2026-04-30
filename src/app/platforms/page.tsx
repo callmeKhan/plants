@@ -326,17 +326,17 @@ export default function PlatformsPage() {
       id: uuidv4(), type: "DELETE", entity: "plant_location",
       payload: { id: locId }, status: "pending", retry_count: 0, created_at: Date.now(),
     });
-    const remaining = await db.plantLocations.where("plant_id").equals(loc.plant_id).count();
-    if (remaining === 0) {
-      await db.plants.delete(loc.plant_id);
+    const plant = await db.plants.get(loc.plant_id);
+    if (plant) {
+      const newTotal = Math.max(0, plant.total_quantity - loc.quantity);
+      await db.plants.update(loc.plant_id, { total_quantity: newTotal });
       await db.syncQueue.add({
-        id: uuidv4(), type: "DELETE", entity: "plant",
-        payload: { id: loc.plant_id }, status: "pending", retry_count: 0, created_at: Date.now(),
+        id: uuidv4(), type: "UPDATE", entity: "plant",
+        payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
       });
-      setToast({ text: "Đã xoá đợt & cây khỏi hệ thống", type: "success" });
-    } else {
-      setToast({ text: "Đã xoá đợt khỏi sàn", type: "success" });
     }
+    setToast({ text: "Đã xoá đợt khỏi sàn", type: "success" });
     processQueue().catch(console.error);
   }
 
@@ -794,10 +794,8 @@ export default function PlatformsPage() {
                                 <button
                                   className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors"
                                   onClick={() => {
-                                    const allLocs = (locations ?? []).filter((l) => l.plant_id === loc.plant_id);
-                                    const isLast = allLocs.length === 1;
                                     openConfirm(
-                                      `Xoá ${loc.quantity} tấm "${plant?.name ?? ""}" khỏi sàn?${isLast ? "\nĐây là đợt cuối cùng — cây sẽ bị xoá khỏi hệ thống." : ""}`,
+                                      `Xoá ${loc.quantity} tấm "${plant?.name ?? ""}" khỏi sàn?`,
                                       () => doDeleteBatchFromPlatform(loc.id)
                                     );
                                   }}
