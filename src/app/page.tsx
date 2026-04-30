@@ -367,9 +367,15 @@ export default function Dashboard() {
                         {p.name}
                       </p>
                       <p className="text-[11px] text-gray-400">
-                        {p.total} tấm · {p.platformCount} sàn
-                        {sortMode === "price" && p.maxPrice > 0 && ` · ${p.maxPrice.toLocaleString()}đ`}
-                        {sortMode === "batches" && ` · ${p.batchCount} đợt`}
+                        {p.total > 0 ? (
+                          <>
+                            {p.total} tấm · {p.platformCount} sàn
+                            {sortMode === "price" && p.maxPrice > 0 && ` · ${p.maxPrice.toLocaleString()}đ`}
+                            {sortMode === "batches" && ` · ${p.batchCount} đợt`}
+                          </>
+                        ) : (
+                          <span className="text-red-400 font-medium">Hết hàng</span>
+                        )}
                       </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
