@@ -765,12 +765,10 @@ export default function PlatformsPage() {
                                 onClick={() => setDetailPlantIdFromPlatform(loc.plant_id)}
                               >
                                 <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
-                                <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
-                                  <Package className="w-3 h-3" />
-                                  <span>{loc.quantity} tấm · chậu {loc.pot_size}</span>
-                                  <span>·</span>
-                                  <Calendar className="w-3 h-3" />
-                                  <span>{fmtDate(loc.planted_date)}</span>
+                                <div className="flex justify-start items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                                  <span className="w-[65px]">{loc.quantity} tấm</span>
+                                  <span className="w-[65px]">chậu {loc.pot_size}</span>
+                                  <span className="">{fmtDate(loc.planted_date)}</span>
                                 </div>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">

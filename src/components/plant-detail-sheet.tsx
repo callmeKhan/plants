@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search, ImageIcon,
+  DollarSign,
 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-modal";
 
@@ -445,25 +446,31 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
                       </>
                     ) : (
                       <div className="flex items-center justify-between">
-                        <div className="text-sm space-y-0.5 min-w-0">
-                          <div className="flex items-center gap-1.5 text-gray-800 font-medium">
-                            <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
-                            {b.quantity} tấm · chậu {b.pot_size}
+                        <div className="text-sm space-y-0.5 min-w-0 w-full">
+                          <div className="flex items-center justify-between gap-1.5 text-gray-800 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
+                              {b.quantity} tấm · chậu {b.pot_size}
+                            </div>
                             {b.price != null && (
-                              <span className="ml-1 text-emerald-700 font-semibold text-xs">
-                                · {b.price.toLocaleString("vi-VN")}₫
-                              </span>
+                              <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-sm">
+                                <DollarSign className="w-3 h-3" />
+                                {b.price.toLocaleString("vi-VN")}₫
+                              </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                            <MapPin className="w-3 h-3" />
-                            <span className="truncate">{platformLabelFull(b.platform_id)}</span>
-                            <span>·</span>
-                            <Calendar className="w-3 h-3" />
-                            {fmtDate(b.planted_date)}
+                          <div className="w-full flex items-center justify-between gap-1.5 text-xs text-gray-500">
+                            <div className="flex items-center gap-1.5">
+                              <MapPin className="w-3 h-3" />
+                              <span className="truncate">{platformLabelFull(b.platform_id)}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="w-3 h-3" />
+                              {fmtDate(b.planted_date)}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center">
                           <button
                             className="ml-2 w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                             style={{ backgroundColor: "#fff7ed" }}
