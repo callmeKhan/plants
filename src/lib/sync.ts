@@ -6,11 +6,12 @@ import { db, type SyncQueueItem, type Garden, type Plant, type Platform, type Pl
  */
 export async function pullFromServer(): Promise<void> {
   try {
-    const [gardensRes, plantsRes, platformsRes, locationsRes] = await Promise.all([
+    const [gardensRes, plantsRes, platformsRes, locationsRes, salesRes] = await Promise.all([
       fetch("/api/gardens"),
       fetch("/api/plants"),
       fetch("/api/platforms"),
       fetch("/api/plant-locations"),
+      fetch("/api/monthly-sales"),
     ]);
 
     if (gardensRes.ok) {
@@ -41,6 +42,13 @@ export async function pullFromServer(): Promise<void> {
         await db.plantLocations.bulkPut(locations);
       });
     }
+    if (salesRes.ok) {
+      const sales = await salesRes.json();
+      await db.transaction("rw", db.monthlySales, async () => {
+        await db.monthlySales.clear();
+        await db.monthlySales.bulkPut(sales);
+      });
+    }
   } catch {
     console.log("Pull from server skipped (offline or error)");
   }
@@ -68,6 +76,7 @@ async function processItem(item: SyncQueueItem): Promise<void> {
     platform: "/api/platforms",
     plant_location: "/api/plant-locations",
     garden: "/api/gardens",
+    monthly_sales: "/api/monthly-sales",
   };
 
   const url = endpointMap[item.entity];
