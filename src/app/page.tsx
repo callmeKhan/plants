@@ -6,6 +6,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
+import { MonthlySalesChart } from "@/components/monthly-sales-chart";
 import { Leaf, Package, Trees, ChevronRight } from "lucide-react";
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
@@ -170,6 +171,9 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* ── Monthly Sales Chart ── */}
+        <MonthlySalesChart />
+
         {/* ── Heatmap Grid ── */}
         <div className="space-y-4">
           <h2 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
@@ -245,7 +249,9 @@ export default function Dashboard() {
                           style={{
                             width: 36,
                             height: 36,
-                            backgroundColor: fillColor(pct),
+                            background: pct === 0
+                              ? "#ebedf0"
+                              : `linear-gradient(to right, ${fillColor(pct)} ${pct}%, #ebedf0 ${pct}%)`,
                             boxShadow: isActive ? "0 0 0 2px #059669" : "none",
                           }}
                           title={`${p.name}: ${used}/${p.capacity}`}
