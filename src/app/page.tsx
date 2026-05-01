@@ -84,6 +84,7 @@ export default function Dashboard() {
       const batchCount = batches.length;
       return { ...p, total, platformCount, maxPrice, batchCount };
     })
+    .filter((p) => p.total > 0)
     .sort((a, b) => {
       let diff = 0;
       if (sortMode === "platforms") diff = b.platformCount - a.platformCount;

@@ -271,7 +271,7 @@ export default function PlatformsPage() {
     const usedOnTarget = (locations ?? [])
       .filter((l) => l.platform_id === moveTargetPlatformId && l.id !== locId)
       .reduce((s, l) => s + l.quantity, 0);
-    const freeOnTarget = targetPlatform.capacity - usedOnTarget;
+    const freeOnTarget = parseFloat((targetPlatform.capacity - usedOnTarget).toFixed(2));
 
     if (qty > freeOnTarget) {
       setToast({
@@ -534,7 +534,7 @@ export default function PlatformsPage() {
                                     const used = (locations ?? [])
                                       .filter((l) => l.platform_id === p.id)
                                       .reduce((s, l) => s + l.quantity, 0);
-                                    const free = p.capacity - used;
+                                    const free = parseFloat((p.capacity - used).toFixed(2));
                                     const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
                                     return (
                                       <div
@@ -548,7 +548,7 @@ export default function PlatformsPage() {
                                               <span className="font-semibold text-gray-900 text-sm truncate mr-1">{p.name}</span>
                                               <div className="flex items-center gap-1 shrink-0">
                                                 <Badge variant={free === 0 ? "warning" : "secondary"} className="text-[10px] px-1.5 py-0 h-5">
-                                                  {free}/{p.capacity}
+                                                  {parseFloat(free.toFixed(2))}/{p.capacity}
                                                 </Badge>
                                                 <button
                                                   onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }}
@@ -621,7 +621,7 @@ export default function PlatformsPage() {
         const garden = gardens?.find((g) => g.id === detailPlatform.garden_id);
         const platformLocs = (locations ?? []).filter((l) => l.platform_id === detailPlatform.id);
         const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
-        const free = detailPlatform.capacity - used;
+        const free = parseFloat((detailPlatform.capacity - used).toFixed(2));
         const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
         return (
           <div
@@ -699,7 +699,7 @@ export default function PlatformsPage() {
                         </form>
                       ) : (
                         <>
-                          <span className="text-lg font-bold" style={{ color: "#2563eb" }}>{used}/{detailPlatform.capacity}</span>
+                          <span className="text-lg font-bold" style={{ color: "#2563eb" }}>{parseFloat(used.toFixed(2))}/{detailPlatform.capacity}</span>
                           <button
                             onClick={() => { setNewCapacity(String(detailPlatform.capacity)); setEditingCapacity(true); }}
                             className="text-blue-300 hover:text-blue-500 p-0.5"
@@ -862,12 +862,12 @@ export default function PlatformsPage() {
                                           if (!movePlatformSearch.trim()) return true;
                                           const q = movePlatformSearch.toLowerCase();
                                           const g = gardens?.find((g) => g.id === p.garden_id);
-                                          const freeSlots = p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0);
+                                          const freeSlots = parseFloat((p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0)).toFixed(2));
                                           return `${g?.name ?? ""} tầng ${p.floor} ${p.name} ${freeSlots}`.toLowerCase().includes(q);
                                         })
                                         .map((p) => {
                                           const g = gardens?.find((g) => g.id === p.garden_id);
-                                          const freeSlots = p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0);
+                                          const freeSlots = parseFloat((p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0)).toFixed(2));
                                           const label = `${g ? g.name + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${freeSlots})`;
                                           return (
                                             <li

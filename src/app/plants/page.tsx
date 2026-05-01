@@ -16,6 +16,7 @@ import {
   X,
   ChevronRight,
   ChevronDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
@@ -114,6 +115,20 @@ function PlantsPageInner() {
 
   const [detailPlantId, setDetailPlantId] = useState<string | null>(null);
   const [openConfirm, confirmModal] = useConfirm();
+  const [filterStock, setFilterStock] = useState<"all" | "out_of_stock">("all");
+  const [filterPotSize, setFilterPotSize] = useState<number[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [closingFilters, setClosingFilters] = useState(false);
+
+  const handleCloseFilters = useCallback(() => {
+    setClosingFilters(true);
+  }, []);
+  const handleFilterAnimEnd = useCallback((e: React.AnimationEvent) => {
+    if (e.animationName === "sheetSlideDown") {
+      setClosingFilters(false);
+      setShowFilters(false);
+    }
+  }, []);
 
 
   const plants = useLiveQuery(() => db.plants.toArray(), [], []);
@@ -237,6 +252,20 @@ function PlantsPageInner() {
       return plant?.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
     });
   }
+  if (filterStock === "out_of_stock") {
+    plantIds = plantIds.filter((pid) => {
+      const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+      return batches.length === 0;
+    });
+  }
+  if (filterPotSize.length > 0) {
+    plantIds = plantIds.filter((pid) => {
+      const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+      return batches.some((b) => filterPotSize.includes(b.pot_size));
+    });
+  }
+  const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort((a, b) => a - b);
+  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0;
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
@@ -432,11 +461,13 @@ function PlantsPageInner() {
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-gray-800 flex items-center gap-2">
             Danh sách
-            <Badge variant="default">{plants?.length ?? 0} loại hoa</Badge>
+            <Badge variant="default">
+              {hasActiveFilter ? `${plantIds.length}/${plants?.length ?? 0}` : (plants?.length ?? 0)} loại hoa
+            </Badge>
           </h2>
-          {searchQuery && (
+          {hasActiveFilter && (
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); }}
               className="text-xs text-emerald-600 flex items-center gap-1"
             >
               <X className="w-3 h-3" /> Bỏ lọc
@@ -444,16 +475,119 @@ function PlantsPageInner() {
           )}
         </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 bg-white shadow-sm">
-          <Search className="w-4 h-4 text-gray-400 shrink-0" />
-          <input
-            className="flex-1 h-10 text-sm bg-transparent outline-none placeholder-gray-400"
-            placeholder="Tìm kiếm cây..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        {/* Search + Filter toggle */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 border border-gray-200 rounded-xl px-3 bg-white shadow-sm">
+            <Search className="w-4 h-4 text-gray-400 shrink-0" />
+            <input
+              className="flex-1 h-10 text-sm bg-transparent outline-none placeholder-gray-400"
+              placeholder="Tìm kiếm cây..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all relative"
+            style={{
+              backgroundColor: showFilters ? "#2563eb" : "#f3f4f6",
+              color: showFilters ? "#fff" : "#6b7280",
+            }}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            {(filterStock !== "all" || filterPotSize.length > 0) && (
+              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
+            )}
+          </button>
         </div>
+
+        {/* Filter modal */}
+        {showFilters && (
+          <div
+            className={`fixed inset-0 z-50 flex items-end justify-center sheet-backdrop${closingFilters ? " closing" : ""}`}
+            onClick={handleCloseFilters}
+          >
+            <div
+              className={`bg-white rounded-t-2xl w-full max-w-lg px-5 pt-4 pb-6 space-y-4 sheet-panel${closingFilters ? " closing" : ""}`}
+              style={{ marginBottom: "55px" }}
+              onClick={(e) => e.stopPropagation()}
+              onAnimationEnd={handleFilterAnimEnd}
+            >
+              <div className="flex justify-center mb-1">
+                <div className="w-10 h-1 rounded-full bg-gray-200" />
+              </div>
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-900">Bộ lọc</h3>
+                <button
+                  onClick={() => { setFilterStock("all"); setFilterPotSize([]); }}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Xóa tất cả
+                </button>
+              </div>
+
+              {/* Stock filter */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Trạng thái</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setFilterStock("all")}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                    style={{
+                      backgroundColor: filterStock === "all" ? "#059669" : "#f3f4f6",
+                      color: filterStock === "all" ? "#fff" : "#6b7280",
+                    }}
+                  >
+                    Tất cả
+                  </button>
+                  <button
+                    onClick={() => setFilterStock("out_of_stock")}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                    style={{
+                      backgroundColor: filterStock === "out_of_stock" ? "#dc2626" : "#f3f4f6",
+                      color: filterStock === "out_of_stock" ? "#fff" : "#6b7280",
+                    }}
+                  >
+                    Hết hàng
+                  </button>
+                </div>
+              </div>
+
+              {/* Pot size filter */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Chậu</p>
+                <div className="flex flex-wrap gap-2">
+                  {allPotSizes.map((size) => {
+                    const selected = filterPotSize.includes(size);
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => setFilterPotSize((prev) =>
+                          selected ? prev.filter((s) => s !== size) : [...prev, size]
+                        )}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                        style={{
+                          backgroundColor: selected ? "#2563eb" : "#f3f4f6",
+                          color: selected ? "#fff" : "#6b7280",
+                        }}
+                      >
+                        Chậu {size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={handleCloseFilters}
+                className="w-full h-11 rounded-xl text-sm font-semibold text-white flex items-center justify-center"
+                style={{ backgroundColor: "#059669" }}
+              >
+                Áp dụng
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Cards */}
         <div className="space-y-2">
