@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
@@ -25,6 +26,16 @@ function fmtDate(d: string) {
 }
 
 export default function PlatformsPage() {
+  return (
+    <Suspense>
+      <PlatformsPageInner />
+    </Suspense>
+  );
+}
+
+function PlatformsPageInner() {
+  const searchParams = useSearchParams();
+
   const [gardenName, setGardenName] = useState("");
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [openGarden, setOpenGarden] = useState(false);
@@ -36,7 +47,7 @@ export default function PlatformsPage() {
   const [openPlatform, setOpenPlatform] = useState(false);
 
   const [openConfirm, confirmModal] = useConfirm();
-  const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
+  const [detailPlatformId, setDetailPlatformId] = useState<string | null>(searchParams.get("detail"));
   const [closingSheet, setClosingSheet] = useState(false);
   const [detailPlantIdFromPlatform, setDetailPlantIdFromPlatform] = useState<string | null>(null);
 

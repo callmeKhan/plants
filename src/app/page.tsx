@@ -3,6 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { Leaf, Package, Trees, ChevronRight } from "lucide-react";
@@ -40,6 +41,7 @@ export default function Dashboard() {
   const [sortMode, setSortMode] = useState<"quantity" | "platforms" | "price" | "batches">("quantity");
   const [sortAsc, setSortAsc] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   const openTooltip = useCallback((id: string, btnEl: HTMLButtonElement) => {
     setTooltipId(id);
@@ -243,9 +245,7 @@ export default function Dashboard() {
                           style={{
                             width: 36,
                             height: 36,
-                            background: pct === 0
-                              ? "#ebedf0"
-                              : `linear-gradient(to right, ${fillColor(pct)} ${pct}%, #ebedf0 ${pct}%)`,
+                            backgroundColor: fillColor(pct),
                             boxShadow: isActive ? "0 0 0 2px #059669" : "none",
                           }}
                           title={`${p.name}: ${used}/${p.capacity}`}
@@ -426,7 +426,10 @@ export default function Dashboard() {
               style={{ left, top, transform: "translateY(-100%)" }}
             >
               <div className="flex items-center justify-between">
-                <span className="font-bold text-gray-900 text-sm">
+                <span
+                  className="font-bold text-gray-900 text-sm cursor-pointer hover:text-blue-600 transition-colors"
+                  onClick={() => router.push(`/platforms?detail=${p.id}`)}
+                >
                   {p.name}
                 </span>
                 <Badge
@@ -479,7 +482,8 @@ export default function Dashboard() {
                       return (
                         <div
                           key={loc.id}
-                          className="flex items-center gap-2 text-[11px]"
+                          className="flex items-center gap-2 text-[11px] cursor-pointer hover:bg-emerald-50 rounded px-0.5 -mx-0.5 transition-colors"
+                          onClick={() => { setDetailPlantId(loc.plant_id); setTooltipId(null); }}
                         >
                           <div className="w-5 h-5 rounded overflow-hidden bg-emerald-50 shrink-0">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
