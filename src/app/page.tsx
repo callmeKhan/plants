@@ -8,8 +8,8 @@ import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { Badge } from "@/components/ui/badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
-import { Leaf, Package, Trees, ChevronRight, BarChart3, Plus } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
+import { MonthlySalesChart } from "@/components/monthly-sales-chart";
+import { Leaf, Package, Trees, ChevronRight } from "lucide-react";
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 
@@ -243,102 +243,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Monthly Sales Chart ── */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-emerald-600" />
-              Thống kê bán ra
-            </h2>
-            <button
-              onClick={() => showSalesForm ? setShowSalesForm(false) : handleOpenAddForm()}
-              className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-          
-          {showSalesForm ? (
-            <form onSubmit={handleSubmitSales} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm relative">
-              <h3 className="text-xs font-semibold text-gray-700 mb-3">{editSaleId ? "Sửa thông số" : "Thêm thông số mới"}</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Tháng (YYYY-MM)</label>
-                  <input
-                    type="month"
-                    required
-                    value={salesMonth}
-                    onChange={(e) => setSalesMonth(e.target.value)}
-                    className="w-full text-sm border-gray-200 rounded-lg shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
-                  />
-                </div>
-                <div></div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Cây Catt (SL)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={salesCatt}
-                    onChange={(e) => setSalesCatt(e.target.value)}
-                    className="w-full text-sm border-gray-200 rounded-lg shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Cây Tổng Hợp (SL)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={salesTonghop}
-                    onChange={(e) => setSalesTonghop(e.target.value)}
-                    className="w-full text-sm border-gray-200 rounded-lg shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowSalesForm(false)}
-                  className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
-                >
-                  Lưu
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
-              {monthlySales && monthlySales.length > 0 ? (
-                <div className="h-32 w-full text-xs">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                    <BarChart data={[...monthlySales].sort((a, b) => a.month.localeCompare(b.month))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                      <XAxis dataKey="month" tickFormatter={(v) => v.split('-')[1] + '/' + v.split('-')[0]} tick={{ fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                      <RechartsTooltip 
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        labelFormatter={(v) => `Tháng ${v.split('-')[1]}/${v.split('-')[0]}`}
-                      />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                      <Bar dataKey="catt_quantity" name="Cây Catt" fill="#059669" radius={[4, 4, 0, 0]} onClick={handleBarClick} cursor="pointer" />
-                      <Bar dataKey="tonghop_quantity" name="Cây Tổng Hợp" fill="#3b82f6" radius={[4, 4, 0, 0]} onClick={handleBarClick} cursor="pointer" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-32 text-gray-400">
-                  <BarChart3 className="w-6 h-6 mb-2 opacity-30" />
-                  <p className="text-xs">Chưa có dữ liệu bán hàng</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <MonthlySalesChart />
 
         {/* ── Heatmap Grid ── */}
         <div className="space-y-4">
