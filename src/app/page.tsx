@@ -177,7 +177,7 @@ export default function Dashboard() {
           {/* Legend */}
           <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
             <span>Trống</span>
-            {[0, 15, 45, 70, 95].map((pct) => (
+            {[0, 15, 45, 70, 85, 95].map((pct) => (
               <div
                 key={pct}
                 className="w-3 h-3 rounded-sm"
@@ -243,7 +243,9 @@ export default function Dashboard() {
                           style={{
                             width: 36,
                             height: 36,
-                            backgroundColor: fillColor(pct),
+                            background: pct === 0
+                              ? "#ebedf0"
+                              : `linear-gradient(to right, ${fillColor(pct)} ${pct}%, #ebedf0 ${pct}%)`,
                             boxShadow: isActive ? "0 0 0 2px #059669" : "none",
                           }}
                           title={`${p.name}: ${used}/${p.capacity}`}
