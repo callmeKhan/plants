@@ -35,6 +35,7 @@ export interface PlantLocation {
   pot_size: number;      // 14 | 16 | 21
   planted_date: string;  // "YYYY-MM-DD"
   price?: number;        // giá mỗi batch
+  status?: string;       // 'trồng lại' | 'sang chậu' | null
 }
 
 export interface SyncQueueItem {
@@ -73,6 +74,15 @@ db.version(4).stores({
 });
 
 db.version(5).stores({
+  gardens: "id, name",
+  plants: "id, name",
+  platforms: "id, garden_id, floor",
+  plantLocations: "id, plant_id, platform_id",
+  syncQueue: "id, status, entity",
+  monthlySales: "id, month",
+});
+
+db.version(6).stores({
   gardens: "id, name",
   plants: "id, name",
   platforms: "id, garden_id, floor",

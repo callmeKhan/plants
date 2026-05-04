@@ -103,6 +103,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
   const [editPlatformId, setEditPlatformId] = useState("");
   const [editPlatformSearch, setEditPlatformSearch] = useState("");
   const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
+  const [editStatus, setEditStatus] = useState("");
 
   const plant = useLiveQuery(() => db.plants.get(plantId), [plantId]);
   const plants = useLiveQuery(() => db.plants.toArray(), [], []);
@@ -157,7 +158,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
     processQueue().catch(console.error);
   }
 
-  function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number }) {
+  function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number; status?: string }) {
     setEditingBatchId(b.id);
     setEditQty(String(b.quantity));
     setEditPrice(b.price != null ? String(b.price) : "");
@@ -165,6 +166,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
     setEditDate(b.planted_date);
     setEditPlatformId(b.platform_id);
     setEditPlatformSearch("");
+    setEditStatus(b.status || "");
   }
 
   async function doUpdateBatch(batchId: string, oldQty: number) {
@@ -173,6 +175,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
     const updates = {
       quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId,
       ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
+      ...(editStatus ? { status: editStatus } : { status: undefined }),
     };
     await db.plantLocations.update(batchId, updates);
     const batch = (locations ?? []).find((l) => l.id === batchId);
@@ -362,6 +365,16 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
                             onChange={(e) => setEditDate(e.target.value)}
                           />
                         </div>
+                        {/* Status select */}
+                        <select
+                          className="w-full h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none text-gray-700"
+                          value={editStatus}
+                          onChange={(e) => setEditStatus(e.target.value)}
+                        >
+                          <option value="">— Trạng thái —</option>
+                          <option value="trồng lại">🌱 Trồng lại</option>
+                          <option value="sang chậu">🪴 Sang chậu</option>
+                        </select>
                         {/* Platform search */}
                         <div className="relative">
                           <div
@@ -441,22 +454,36 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
                               <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
                               {b.quantity} tấm · chậu {b.pot_size}
                             </div>
-                            {b.price != null && (
-                              <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-sm">
-                                <DollarSign className="w-3 h-3" />
-                                {b.price.toLocaleString("vi-VN")}₫
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {b.status && (
+                                <span
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
+                                  style={{
+                                    backgroundColor: b.status === 'sang chậu' ? '#dbeafe' : '#fef3c7',
+                                    color: b.status === 'sang chậu' ? '#1d4ed8' : '#92400e',
+                                  }}
+                                >
+                                  {b.status === 'sang chậu' ? '🪴' : '🌱'} {b.status}
+                                </span>
+                              )}
+                              {b.price != null && (
+                                <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-sm">
+                                  <DollarSign className="w-3 h-3" />
+                                  {b.price.toLocaleString("vi-VN")}₫
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div className="w-full flex items-center justify-between gap-1.5 text-xs text-gray-500">
                             <div className="flex items-center gap-1.5">
                               <MapPin className="w-3 h-3" />
                               <span className="truncate">{platformLabelFull(b.platform_id)}</span>
                             </div>
-                            <div className="flex items-center gap-1.5">
+                            {b.planted_date && (<div className="flex items-center gap-1.5">
                               <Calendar className="w-3 h-3" />
                               {fmtDate(b.planted_date)}
-                            </div>
+                            </div>)
+                            }
                           </div>
                         </div>
                         <div className="flex items-center">

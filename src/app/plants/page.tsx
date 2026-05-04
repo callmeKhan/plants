@@ -117,6 +117,7 @@ function PlantsPageInner() {
   const [openConfirm, confirmModal] = useConfirm();
   const [filterStock, setFilterStock] = useState<"all" | "out_of_stock">("all");
   const [filterPotSize, setFilterPotSize] = useState<number[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string>("");
   const [showFilters, setShowFilters] = useState(false);
   const [closingFilters, setClosingFilters] = useState(false);
 
@@ -264,8 +265,14 @@ function PlantsPageInner() {
       return batches.some((b) => filterPotSize.includes(b.pot_size));
     });
   }
+  if (filterStatus) {
+    plantIds = plantIds.filter((pid) => {
+      const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+      return batches.some((b) => b.status === filterStatus);
+    });
+  }
   const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort((a, b) => a - b);
-  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0;
+  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus;
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
@@ -467,7 +474,7 @@ function PlantsPageInner() {
           </h2>
           {hasActiveFilter && (
             <button
-              onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); }}
+              onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); }}
               className="text-xs text-emerald-600 flex items-center gap-1"
             >
               <X className="w-3 h-3" /> Bỏ lọc
@@ -495,7 +502,7 @@ function PlantsPageInner() {
             }}
           >
             <SlidersHorizontal className="w-4 h-4" />
-            {(filterStock !== "all" || filterPotSize.length > 0) && (
+            {(filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus) && (
               <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
             )}
           </button>
@@ -519,7 +526,7 @@ function PlantsPageInner() {
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-gray-900">Bộ lọc</h3>
                 <button
-                  onClick={() => { setFilterStock("all"); setFilterPotSize([]); }}
+                  onClick={() => { setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); }}
                   className="text-xs text-gray-400 hover:text-gray-600"
                 >
                   Xóa tất cả
@@ -575,6 +582,43 @@ function PlantsPageInner() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Status filter */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Trạng thái batch</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setFilterStatus("")}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                    style={{
+                      backgroundColor: !filterStatus ? "#059669" : "#f3f4f6",
+                      color: !filterStatus ? "#fff" : "#6b7280",
+                    }}
+                  >
+                    Tất cả
+                  </button>
+                  <button
+                    onClick={() => setFilterStatus("trồng lại")}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                    style={{
+                      backgroundColor: filterStatus === "trồng lại" ? "#f59e0b" : "#f3f4f6",
+                      color: filterStatus === "trồng lại" ? "#fff" : "#6b7280",
+                    }}
+                  >
+                    🌱 Trồng lại
+                  </button>
+                  <button
+                    onClick={() => setFilterStatus("sang chậu")}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                    style={{
+                      backgroundColor: filterStatus === "sang chậu" ? "#2563eb" : "#f3f4f6",
+                      color: filterStatus === "sang chậu" ? "#fff" : "#6b7280",
+                    }}
+                  >
+                    🪴 Sang chậu
+                  </button>
                 </div>
               </div>
 
@@ -636,7 +680,20 @@ function PlantsPageInner() {
                               <span>{platformLabelWithGarden(b.platform_id)}</span>
                               <span>{b.quantity} tấm, chậu {b.pot_size}</span>
                             </div>
-                            <span className="text-gray-900 text-xs ml-auto">{fmtDate(b.planted_date)}</span>
+                            <div className="flex items-center gap-1 ml-auto">
+                              {b.status && (
+                                <span
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
+                                  style={{
+                                    backgroundColor: b.status === 'sang chậu' ? '#dbeafe' : '#fef3c7',
+                                    color: b.status === 'sang chậu' ? '#1d4ed8' : '#92400e',
+                                  }}
+                                >
+                                  {b.status === 'sang chậu' ? '🪴' : '🌱'} {b.status}
+                                </span>
+                              )}
+                              <span className="text-gray-900 text-xs">{fmtDate(b.planted_date)}</span>
+                            </div>
                           </div>
                         ))}
                       </div>
