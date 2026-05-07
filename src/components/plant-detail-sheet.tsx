@@ -488,7 +488,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
                             <div className="flex items-center gap-1.5 cursor-pointer underline"
                               onClick={() => {
                                 if (window.location.pathname.includes("platforms")) return
-                                router.push(`/platforms?detail=${b.platform_id}`)
+                                router.push(`/platforms?detail=${b.platform_id}&highlight=${b.id}`)
                               }}
                             >
                               <MapPin className="w-3 h-3" />
