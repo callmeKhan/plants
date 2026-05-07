@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { Input } from "@/components/ui/input";
+import { round2 } from "@/lib/number";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -280,12 +281,12 @@ function PlatformsPageInner() {
     const targetPlatform = platforms?.find((p) => p.id === moveTargetPlatformId);
     if (!targetPlatform) return;
 
-    const qty = Number(moveQty) || loc.quantity;
+    const qty = round2(Number(moveQty) || loc.quantity);
 
     const usedOnTarget = (locations ?? [])
       .filter((l) => l.platform_id === moveTargetPlatformId && l.id !== locId)
       .reduce((s, l) => s + l.quantity, 0);
-    const freeOnTarget = parseFloat((targetPlatform.capacity - usedOnTarget).toFixed(2));
+    const freeOnTarget = round2(targetPlatform.capacity - usedOnTarget);
 
     if (qty > freeOnTarget) {
       setToast({
@@ -308,7 +309,7 @@ function PlatformsPageInner() {
 
     if (matchingBatch) {
       // Merge into existing batch at destination
-      const mergedQty = matchingBatch.quantity + qty;
+      const mergedQty = round2(matchingBatch.quantity + qty);
       await db.plantLocations.update(matchingBatch.id, { quantity: mergedQty });
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant_location",
@@ -325,7 +326,7 @@ function PlatformsPageInner() {
         });
       } else {
         // Partial move: reduce the original batch quantity
-        const newOrigQty = loc.quantity - qty;
+        const newOrigQty = round2(loc.quantity - qty);
         await db.plantLocations.update(locId, { quantity: newOrigQty });
         await db.syncQueue.add({
           id: uuidv4(), type: "UPDATE", entity: "plant_location",
@@ -343,7 +344,7 @@ function PlatformsPageInner() {
       });
     } else {
       // Chuyển một phần: giảm qty bậch gốc + tạo bậch mới ở đích
-      const newOrigQty = loc.quantity - qty;
+      const newOrigQty = round2(loc.quantity - qty);
       await db.plantLocations.update(locId, { quantity: newOrigQty });
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant_location",
@@ -382,7 +383,7 @@ function PlatformsPageInner() {
     });
     const plant = await db.plants.get(loc.plant_id);
     if (plant) {
-      const newTotal = Math.max(0, plant.total_quantity - loc.quantity);
+      const newTotal = Math.max(0, round2(plant.total_quantity - loc.quantity));
       await db.plants.update(loc.plant_id, { total_quantity: newTotal });
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",
@@ -588,7 +589,7 @@ function PlatformsPageInner() {
                                         const used = (locations ?? [])
                                           .filter((l) => l.platform_id === p.id)
                                           .reduce((s, l) => s + l.quantity, 0);
-                                        const free = parseFloat((p.capacity - used).toFixed(2));
+                                        const free = round2(p.capacity - used);
                                         const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
                                         return (
                                           <div
@@ -602,7 +603,7 @@ function PlatformsPageInner() {
                                                   <span className="font-semibold text-gray-900 text-sm truncate mr-1">{p.name}</span>
                                                   <div className="flex items-center gap-1 shrink-0">
                                                     <Badge variant={free === 0 ? "warning" : "secondary"} className="text-[10px] px-1.5 py-0 h-5">
-                                                      {parseFloat(free.toFixed(2))}/{p.capacity}
+                                                    {round2(free)}/{p.capacity}
                                                     </Badge>
                                                     <button
                                                       onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }}
@@ -675,7 +676,7 @@ function PlatformsPageInner() {
           const garden = gardens?.find((g) => g.id === detailPlatform.garden_id);
           const platformLocs = (locations ?? []).filter((l) => l.platform_id === detailPlatform.id);
           const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
-          const free = parseFloat((detailPlatform.capacity - used).toFixed(2));
+          const free = round2(detailPlatform.capacity - used);
           const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
           return (
             <div
@@ -753,7 +754,7 @@ function PlatformsPageInner() {
                           </form>
                         ) : (
                           <>
-                            <span className="text-lg font-bold" style={{ color: "#2563eb" }}>{parseFloat(used.toFixed(2))}/{detailPlatform.capacity}</span>
+                            <span className="text-lg font-bold" style={{ color: "#2563eb" }}>{round2(used)}/{detailPlatform.capacity}</span>
                             <button
                               onClick={() => { setNewCapacity(String(detailPlatform.capacity)); setEditingCapacity(true); }}
                               className="text-blue-300 hover:text-blue-500 p-0.5"
@@ -925,12 +926,12 @@ function PlatformsPageInner() {
                                             if (!movePlatformSearch.trim()) return true;
                                             const q = movePlatformSearch.toLowerCase();
                                             const g = gardens?.find((g) => g.id === p.garden_id);
-                                            const freeSlots = parseFloat((p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0)).toFixed(2));
+                                            const freeSlots = round2(p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
                                             return `${g?.name ?? ""} tầng ${p.floor} ${p.name} ${freeSlots}`.toLowerCase().includes(q);
                                           })
                                           .map((p) => {
                                             const g = gardens?.find((g) => g.id === p.garden_id);
-                                            const freeSlots = parseFloat((p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0)).toFixed(2));
+                                            const freeSlots = round2(p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
                                             const label = `${g ? g.name + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${freeSlots})`;
                                             return (
                                               <li

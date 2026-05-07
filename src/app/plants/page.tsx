@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { Input } from "@/components/ui/input";
+import { round2 } from "@/lib/number";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -174,7 +175,7 @@ function PlantsPageInner() {
       });
       plant = newPlant;
     } else {
-      const newTotal = plant.total_quantity + qty;
+      const newTotal = round2(plant.total_quantity + qty);
       await db.plants.update(plant.id, { total_quantity: newTotal });
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",

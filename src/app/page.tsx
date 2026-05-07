@@ -6,6 +6,7 @@ import { processQueue } from "@/lib/sync";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
+import { round2 } from "@/lib/number";
 import { Badge } from "@/components/ui/badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { MonthlySalesChart } from "@/components/monthly-sales-chart";
@@ -78,14 +79,14 @@ export default function Dashboard() {
   }, [tooltipId]);
 
   // ── Derived stats ──
-  const totalPlants = (locations ?? []).reduce((s, l) => s + l.quantity, 0);
-  const totalCapacity = (platforms ?? []).reduce((s, p) => s + p.capacity, 0);
+  const totalPlants = round2((locations ?? []).reduce((s, l) => s + l.quantity, 0));
+  const totalCapacity = round2((platforms ?? []).reduce((s, p) => s + p.capacity, 0));
   const fillPct = totalCapacity > 0 ? Math.round((totalPlants / totalCapacity) * 100) : 0;
   const totalPlatforms = platforms?.length ?? 0;
   const fullPlatforms = (platforms ?? []).filter((p) => {
-    const used = (locations ?? [])
+    const used = round2((locations ?? [])
       .filter((l) => l.platform_id === p.id)
-      .reduce((s, l) => s + l.quantity, 0);
+      .reduce((s, l) => s + l.quantity, 0));
     return p.capacity > 0 && used >= p.capacity;
   }).length;
   const totalGardens = gardens?.length ?? 0;
@@ -94,9 +95,9 @@ export default function Dashboard() {
   const plantStats = (plants ?? [])
     .map((p) => {
       const batches = (locations ?? []).filter((l) => l.plant_id === p.id);
-      const total = batches.reduce((s, l) => s + l.quantity, 0);
+      const total = round2(batches.reduce((s, l) => s + l.quantity, 0));
       const platformCount = new Set(batches.map((b) => b.platform_id)).size;
-      const maxPrice = batches.reduce((m, l) => Math.max(m, l.price ?? 0), 0);
+      const maxPrice = round2(batches.reduce((m, l) => Math.max(m, l.price ?? 0), 0));
       const batchCount = batches.length;
       return { ...p, total, platformCount, maxPrice, batchCount };
     })
@@ -312,9 +313,9 @@ export default function Dashboard() {
                     );
 
                     const renderCell = (p: (typeof floorPlatforms)[0]) => {
-                      const used = (locations ?? [])
+                      const used = round2((locations ?? [])
                         .filter((l) => l.platform_id === p.id)
-                        .reduce((s, l) => s + l.quantity, 0);
+                        .reduce((s, l) => s + l.quantity, 0));
                       const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
                       const isActive = tooltipId === p.id;
                       return (
@@ -487,9 +488,9 @@ export default function Dashboard() {
         (() => {
           const p = platforms?.find((pl) => pl.id === tooltipId);
           if (!p) return null;
-          const used = (locations ?? [])
+          const used = round2((locations ?? [])
             .filter((l) => l.platform_id === p.id)
-            .reduce((s, l) => s + l.quantity, 0);
+            .reduce((s, l) => s + l.quantity, 0));
           const pct =
             p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
           const tooltipW = 208; // w-52 = 13rem = 208px

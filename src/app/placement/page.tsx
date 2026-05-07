@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
+import { round2 } from "@/lib/number";
 import { v4 as uuidv4 } from "uuid";
 
 export default function PlacementPage() {
@@ -34,7 +35,7 @@ export default function PlacementPage() {
       return;
     }
 
-    const qty = Number(quantity);
+    const qty = round2(Number(quantity));
 
     // Validate inventory constraint (client-side)
     const plant = await db.plants.get(plantId);
@@ -77,7 +78,7 @@ export default function PlacementPage() {
       .find((l) => l.platform_id === platformId);
 
     if (existing) {
-      const newQty = existing.quantity + qty;
+      const newQty = round2(existing.quantity + qty);
       await db.plantLocations.update(existing.id, { quantity: newQty });
       await db.syncQueue.add({
         id: uuidv4(),

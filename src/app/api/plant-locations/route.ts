@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
+import { round2 } from "@/lib/number";
 
 // GET /api/plant-locations
 export async function GET() {
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (existing) {
-      const newQty = existing.quantity + quantity;
+      const newQty = round2(existing.quantity + quantity);
       const { data, error } = await supabase
         .from("plant_locations")
         .update({ quantity: newQty })

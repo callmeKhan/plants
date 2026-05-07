@@ -5,6 +5,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
+import { round2 } from "@/lib/number";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
@@ -195,7 +196,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
 
       if (existingBatch) {
         // Merge: add current quantity to existing batch, then delete current
-        const mergedQty = existingBatch.quantity + newQty;
+        const mergedQty = round2(existingBatch.quantity + newQty);
         await db.plantLocations.update(existingBatch.id, { quantity: mergedQty });
         await db.syncQueue.add({
           id: uuidv4(), type: "UPDATE", entity: "plant_location",
@@ -212,7 +213,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
 
         // Update plant total_quantity if quantity value changed
         if (newQty !== oldQty) {
-          const newTotal = Math.max(0, plant.total_quantity - oldQty + newQty);
+          const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
           await db.plants.update(plantId, { total_quantity: newTotal });
           await db.syncQueue.add({
             id: uuidv4(), type: "UPDATE", entity: "plant",
@@ -241,7 +242,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
     if (newQty !== oldQty) {
-      const newTotal = Math.max(0, plant.total_quantity - oldQty + newQty);
+      const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
       await db.plants.update(plantId, { total_quantity: newTotal });
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",
@@ -261,7 +262,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
       payload: { id: batchId } as Record<string, unknown>,
       status: "pending", retry_count: 0, created_at: Date.now(),
     });
-    const newTotal = Math.max(0, plant.total_quantity - qty);
+    const newTotal = Math.max(0, round2(plant.total_quantity - qty));
     await db.plants.update(plantId, { total_quantity: newTotal });
     await db.syncQueue.add({
       id: uuidv4(), type: "UPDATE", entity: "plant",
