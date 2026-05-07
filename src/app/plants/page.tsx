@@ -435,8 +435,8 @@ function PlantsPageInner() {
                         const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
                         return `tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
                       }).length === 0 && (
-                        <li className="px-3 py-2 text-gray-400 text-center">Không tìm thấy</li>
-                      )}
+                          <li className="px-3 py-2 text-gray-400 text-center">Không tìm thấy</li>
+                        )}
                     </ul>
                   )}
                 </div>
@@ -645,7 +645,7 @@ function PlantsPageInner() {
           {plantIds.map((pid) => {
             const plant = plants?.find((p) => p.id === pid);
             const batches = (locations ?? []).filter((l) => l.plant_id === pid);
-            const total = batches.reduce((s, l) => s + l.quantity, 0);
+            const total = round2(batches.reduce((s, l) => s + l.quantity, 0));
             return (
               <button
                 key={pid}
@@ -673,31 +673,31 @@ function PlantsPageInner() {
                         )}
                       </div>
                       {batches.length > 0 && (
-                      <div className="space-y-1">
-                        {batches.map((b) => (
-                          <div key={b.id} className="text-xs text-gray-500 flex flex-wrap items-start gap-x-1 gap-y-0 border-b border-gray-200">
-                            {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
-                            <div className="flex flex-col">
-                              <span>{platformLabelWithGarden(b.platform_id)}</span>
-                              <span>{b.quantity} tấm, chậu {b.pot_size}</span>
+                        <div className="space-y-1">
+                          {batches.map((b) => (
+                            <div key={b.id} className="text-xs text-gray-500 flex flex-wrap items-start gap-x-1 gap-y-0 border-b border-gray-200">
+                              {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
+                              <div className="flex flex-col">
+                                <span>{platformLabelWithGarden(b.platform_id)}</span>
+                                <span>{b.quantity} tấm, chậu {b.pot_size}</span>
+                              </div>
+                              <div className="flex items-center gap-1 ml-auto">
+                                {b.status && (
+                                  <span
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
+                                    style={{
+                                      backgroundColor: b.status === 'sang chậu' ? '#dbeafe' : '#fef3c7',
+                                      color: b.status === 'sang chậu' ? '#1d4ed8' : '#92400e',
+                                    }}
+                                  >
+                                    {b.status === 'sang chậu' ? '🪴' : '🌱'} {b.status}
+                                  </span>
+                                )}
+                                <span className="text-gray-900 text-xs">{fmtDate(b.planted_date)}</span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 ml-auto">
-                              {b.status && (
-                                <span
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
-                                  style={{
-                                    backgroundColor: b.status === 'sang chậu' ? '#dbeafe' : '#fef3c7',
-                                    color: b.status === 'sang chậu' ? '#1d4ed8' : '#92400e',
-                                  }}
-                                >
-                                  {b.status === 'sang chậu' ? '🪴' : '🌱'} {b.status}
-                                </span>
-                              )}
-                              <span className="text-gray-900 text-xs">{fmtDate(b.planted_date)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <ChevronRight className="w-4 h-4 text-gray-300 shrink-0 mt-1" />

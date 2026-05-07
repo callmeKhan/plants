@@ -76,6 +76,7 @@ interface PlantDetailSheetProps {
 
 export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDetailSheetProps) {
   const [openConfirm, confirmModal] = useConfirm();
+  const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const router = useRouter();
 
@@ -190,8 +191,8 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
         b.platform_id === editPlatformId &&
         b.pot_size === editPotSize &&
         b.planted_date === editDate &&
-        b.price === targetPrice &&
-        (b.status || undefined) === targetStatus
+        (targetPrice ? b.price === targetPrice : true) &&
+        (targetStatus ? b.status === targetStatus : true)
       );
 
       if (existingBatch) {
@@ -224,6 +225,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
 
         setEditingBatchId(null);
         processQueue().catch(console.error);
+        setToast({ text: `Đã chuyển ${newQty} tấm sang sàn ${platformLabelFull(editPlatformId)} thành công! (Gộp vào đợt cũ)`, type: "success" });
         return;
       }
     }
@@ -476,7 +478,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
                                 .map((p) => {
                                   const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
                                   const g = gardens?.find((g) => g.id === p.garden_id)?.name;
-                                  const label = `${g ? g + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${free})`;
+                                  const label = `${g ? g + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${round2(free)})`;
                                   return (
                                     <li
                                       key={p.id}
