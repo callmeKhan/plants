@@ -195,7 +195,8 @@ export default function Dashboard() {
             </div>
             <p className="text-xl font-bold text-gray-900">
               {totalPlants.toFixed(2)}
-              <span className="text-sm font-medium text-gray-400">/{totalCapacity.toFixed(2)}</span>
+              <br />
+              <span className="text-sm font-medium text-gray-400">{totalCapacity.toFixed(2)}</span>
             </p>
             <div className="flex items-center justify-center gap-1.5 mt-0.5">
               <div className="flex-1 max-w-[60px] h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -215,7 +216,8 @@ export default function Dashboard() {
             </div>
             <p className="text-xl font-bold text-gray-900">
               {fullPlatforms}
-              <span className="text-sm font-medium text-gray-400">/{totalPlatforms}</span>
+              <br />
+              <span className="text-sm font-medium text-gray-400">{totalPlatforms}</span>
             </p>
             <div className="flex items-center justify-center gap-1.5 mt-0.5">
               <div className="flex-1 max-w-[60px] h-1.5 rounded-full bg-gray-100 overflow-hidden">
