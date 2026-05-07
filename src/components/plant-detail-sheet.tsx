@@ -176,6 +176,58 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
   async function doUpdateBatch(batchId: string, oldQty: number) {
     const newQty = Number(editQty);
     if (!newQty || !editPlatformId || !plant) return;
+
+    // If destination has a matching batch (same plant_id, platform_id, pot_size, planted_date, price, status),
+    // merge quantities and delete the current batch
+    const currentBatch = (batches ?? []).find((b) => b.id === batchId);
+    if (currentBatch) {
+      const targetPrice = editPrice ? Number(editPrice) : undefined;
+      const targetStatus = editStatus || undefined;
+
+      const existingBatch = (batches ?? []).find((b) =>
+        b.id !== batchId &&
+        b.platform_id === editPlatformId &&
+        b.pot_size === editPotSize &&
+        b.planted_date === editDate &&
+        b.price === targetPrice &&
+        (b.status || undefined) === targetStatus
+      );
+
+      if (existingBatch) {
+        // Merge: add current quantity to existing batch, then delete current
+        const mergedQty = existingBatch.quantity + newQty;
+        await db.plantLocations.update(existingBatch.id, { quantity: mergedQty });
+        await db.syncQueue.add({
+          id: uuidv4(), type: "UPDATE", entity: "plant_location",
+          payload: { ...existingBatch, quantity: mergedQty } as Record<string, unknown>,
+          status: "pending", retry_count: 0, created_at: Date.now(),
+        });
+
+        await db.plantLocations.delete(batchId);
+        await db.syncQueue.add({
+          id: uuidv4(), type: "DELETE", entity: "plant_location",
+          payload: { id: batchId } as Record<string, unknown>,
+          status: "pending", retry_count: 0, created_at: Date.now(),
+        });
+
+        // Update plant total_quantity if quantity value changed
+        if (newQty !== oldQty) {
+          const newTotal = Math.max(0, plant.total_quantity - oldQty + newQty);
+          await db.plants.update(plantId, { total_quantity: newTotal });
+          await db.syncQueue.add({
+            id: uuidv4(), type: "UPDATE", entity: "plant",
+            payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
+            status: "pending", retry_count: 0, created_at: Date.now(),
+          });
+        }
+
+        setEditingBatchId(null);
+        processQueue().catch(console.error);
+        return;
+      }
+    }
+
+    // No merge needed — standard update
     const updates = {
       quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId,
       ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),

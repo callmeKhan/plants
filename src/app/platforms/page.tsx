@@ -295,7 +295,45 @@ function PlatformsPageInner() {
       return;
     }
 
-    if (qty === loc.quantity) {
+    // Check if destination has a matching batch (same plant_id, platform_id, pot_size, planted_date, price, status)
+    const matchingBatch = (locations ?? []).find((l) =>
+      l.id !== locId &&
+      l.plant_id === loc.plant_id &&
+      l.platform_id === moveTargetPlatformId &&
+      l.pot_size === loc.pot_size &&
+      l.planted_date === loc.planted_date &&
+      (l.price ?? null) === (loc.price ?? null) &&
+      (l.status ?? null) === (loc.status ?? null)
+    );
+
+    if (matchingBatch) {
+      // Merge into existing batch at destination
+      const mergedQty = matchingBatch.quantity + qty;
+      await db.plantLocations.update(matchingBatch.id, { quantity: mergedQty });
+      await db.syncQueue.add({
+        id: uuidv4(), type: "UPDATE", entity: "plant_location",
+        payload: { ...matchingBatch, quantity: mergedQty } as Record<string, unknown>,
+        status: "pending", retry_count: 0, created_at: Date.now(),
+      });
+
+      if (qty === loc.quantity) {
+        // Full move: delete the original batch
+        await db.plantLocations.delete(locId);
+        await db.syncQueue.add({
+          id: uuidv4(), type: "DELETE", entity: "plant_location",
+          payload: { id: locId }, status: "pending", retry_count: 0, created_at: Date.now(),
+        });
+      } else {
+        // Partial move: reduce the original batch quantity
+        const newOrigQty = loc.quantity - qty;
+        await db.plantLocations.update(locId, { quantity: newOrigQty });
+        await db.syncQueue.add({
+          id: uuidv4(), type: "UPDATE", entity: "plant_location",
+          payload: { ...loc, quantity: newOrigQty } as Record<string, unknown>,
+          status: "pending", retry_count: 0, created_at: Date.now(),
+        });
+      }
+    } else if (qty === loc.quantity) {
       // Chuyển toàn bộ: đổi platform_id bậch gốc
       await db.plantLocations.update(locId, { platform_id: moveTargetPlatformId });
       await db.syncQueue.add({
@@ -315,6 +353,8 @@ function PlatformsPageInner() {
       const newLoc = {
         id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
         quantity: qty, pot_size: loc.pot_size, planted_date: loc.planted_date,
+        ...(loc.price != null ? { price: loc.price } : {}),
+        ...(loc.status ? { status: loc.status } : {}),
       };
       await db.plantLocations.add(newLoc);
       await db.syncQueue.add({
@@ -328,7 +368,7 @@ function PlatformsPageInner() {
     setMoveTargetPlatformId("");
     setMoveQty("");
     setMovePlatformSearch("");
-    setToast({ text: `Đã chuyển ${qty} tấm thành công!`, type: "success" });
+    setToast({ text: `Đã chuyển ${qty} tấm thành công! ${matchingBatch && qty === loc.quantity ? "(Gộp vào đợt cũ)" : ''}`, type: "success" });
     processQueue().catch(console.error);
   }
 
@@ -663,8 +703,8 @@ function PlatformsPageInner() {
                             value={newPlatformName}
                             onChange={(e) => setNewPlatformName(e.target.value)}
                           />
-                        <button type="submit" className="text-blue-600 p-1 shrink-0"><Check className="w-5 h-5"/></button>
-                        <button type="button" onClick={() => setEditingPlatformName(false)} className="text-gray-400 p-1 shrink-0"><X className="w-5 h-5"/></button>
+                          <button type="submit" className="text-blue-600 p-1 shrink-0"><Check className="w-5 h-5" /></button>
+                          <button type="button" onClick={() => setEditingPlatformName(false)} className="text-gray-400 p-1 shrink-0"><X className="w-5 h-5" /></button>
                         </form>
                       ) : (
                         <div className="flex items-center gap-2 text-gray-900">
@@ -708,8 +748,8 @@ function PlatformsPageInner() {
                               value={newCapacity}
                               onChange={(e) => setNewCapacity(e.target.value)}
                             />
-                          <button type="submit" className="text-blue-600 p-1"><Check className="w-4 h-4"/></button>
-                          <button type="button" onClick={() => setEditingCapacity(false)} className="text-gray-400 p-1"><X className="w-4 h-4"/></button>
+                            <button type="submit" className="text-blue-600 p-1"><Check className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => setEditingCapacity(false)} className="text-gray-400 p-1"><X className="w-4 h-4" /></button>
                           </form>
                         ) : (
                           <>
@@ -895,8 +935,7 @@ function PlatformsPageInner() {
                                             return (
                                               <li
                                                 key={p.id}
-                                              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${
-                                                moveTargetPlatformId === p.id ? "bg-blue-50 font-medium text-blue-700" : "text-gray-800"
+                                                className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${moveTargetPlatformId === p.id ? "bg-blue-50 font-medium text-blue-700" : "text-gray-800"
                                                   } ${freeSlots < loc.quantity ? "opacity-50" : ""}`}
                                                 onMouseDown={() => { setMoveTargetPlatformId(p.id); setMovePlatformSearch(""); setShowMovePlatformDropdown(false); }}
                                               >
