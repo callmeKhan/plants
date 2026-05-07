@@ -50,6 +50,7 @@ function PlatformsPageInner() {
   const [detailPlatformId, setDetailPlatformId] = useState<string | null>(searchParams.get("detail"));
   const [closingSheet, setClosingSheet] = useState(false);
   const [detailPlantIdFromPlatform, setDetailPlantIdFromPlatform] = useState<string | null>(null);
+  const [highlightBatchId, setHighlightBatchId] = useState<string | null>(null);
 
   const handleCloseSheet = useCallback(() => {
     setClosingSheet(true);
@@ -773,7 +774,10 @@ function PlatformsPageInner() {
                               </div>
                               <div
                                 className="flex-1 min-w-0 cursor-pointer"
-                                onClick={() => setDetailPlantIdFromPlatform(loc.plant_id)}
+                                onClick={() => {
+                                  setDetailPlantIdFromPlatform(loc.plant_id);
+                                  setHighlightBatchId(loc.id);
+                                }}
                               >
                                 <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
                                 <div className="flex justify-start items-center gap-1.5 text-xs text-gray-500 mt-0.5">
@@ -944,7 +948,11 @@ function PlatformsPageInner() {
     {detailPlantIdFromPlatform && (
       <PlantDetailSheet
         plantId={detailPlantIdFromPlatform}
-        onClose={() => setDetailPlantIdFromPlatform(null)}
+        highlightBatchId={highlightBatchId ?? undefined}
+        onClose={() => {
+          setDetailPlantIdFromPlatform(null);
+          setHighlightBatchId(null);
+        }}
       />
     )}
     </>

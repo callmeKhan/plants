@@ -52,6 +52,8 @@ export default function Dashboard() {
   const [salesCatt, setSalesCatt] = useState("");
   const [salesTonghop, setSalesTonghop] = useState("");
 
+  const [highlightBatchId, setHighlightBatchId] = useState<string | null>(null);
+
   const tooltipRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -471,7 +473,8 @@ export default function Dashboard() {
       {detailPlantId && (
         <PlantDetailSheet
           plantId={detailPlantId}
-          onClose={() => setDetailPlantId(null)}
+          onClose={() => { setDetailPlantId(null); setHighlightBatchId(null); }}
+          highlightBatchId={highlightBatchId ?? undefined}
         />
       )}
 
@@ -560,7 +563,7 @@ export default function Dashboard() {
                         <div
                           key={loc.id}
                           className="flex items-center gap-2 text-[11px] cursor-pointer hover:bg-emerald-50 rounded px-0.5 -mx-0.5 transition-colors"
-                          onClick={() => { setDetailPlantId(loc.plant_id); setTooltipId(null); }}
+                          onClick={() => { setDetailPlantId(loc.plant_id); setTooltipId(null); setHighlightBatchId(loc.id); }}
                         >
                           <div className="w-5 h-5 rounded overflow-hidden bg-emerald-50 shrink-0">
                             {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useRouter } from "next/navigation";
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search, ImageIcon,
   DollarSign,
@@ -69,10 +70,13 @@ function PotSizeInput({ value, onChange, usedSizes }: { value: number; onChange:
 interface PlantDetailSheetProps {
   plantId: string;
   onClose: () => void;
+  highlightBatchId?: string;
 }
 
-export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
+export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDetailSheetProps) {
   const [openConfirm, confirmModal] = useConfirm();
+
+  const router = useRouter();
 
   // Exit animation
   const [isClosing, setIsClosing] = useState(false);
@@ -337,7 +341,13 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
               <h3 className="font-semibold text-gray-800 mb-2 text-sm">Các đợt trồng ({(batches ?? []).length})</h3>
               <div className="space-y-2">
                 {(batches ?? []).map((b) => (
-                  <div key={b.id} className="bg-gray-50 rounded-xl px-3 py-2.5 space-y-2">
+                  <div
+                    key={b.id}
+                    className={`rounded-xl px-3 py-2.5 space-y-2 transition-all duration-500 ${b.id === highlightBatchId
+                      ? "border-2 border-green-200"
+                      : "border border-transparent"
+                      }`}
+                  >
                     {editingBatchId === b.id ? (
                       <>
                         <div className="flex gap-2">
@@ -450,7 +460,7 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
                       <div className="flex items-center justify-between">
                         <div className="text-sm space-y-0.5 min-w-0 w-full">
                           <div className="flex items-center justify-between gap-1.5 text-gray-800 font-medium">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5" >
                               <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
                               {b.quantity} tấm · chậu {b.pot_size}
                             </div>
@@ -475,7 +485,12 @@ export function PlantDetailSheet({ plantId, onClose }: PlantDetailSheetProps) {
                             </div>
                           </div>
                           <div className="w-full flex items-center justify-between gap-1.5 text-xs text-gray-500">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 cursor-pointer underline"
+                              onClick={() => {
+                                if (window.location.pathname.includes("platforms")) return
+                                router.push(`/platforms?detail=${b.platform_id}`)
+                              }}
+                            >
                               <MapPin className="w-3 h-3" />
                               <span className="truncate">{platformLabelFull(b.platform_id)}</span>
                             </div>
