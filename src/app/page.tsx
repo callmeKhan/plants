@@ -217,6 +217,7 @@ export default function Dashboard() {
             <p className="text-xl font-bold text-gray-900">
               {fullPlatforms}
               <br />
+
               <span className="text-sm font-medium text-gray-400">{totalPlatforms}</span>
             </p>
             <div className="flex items-center justify-center gap-1.5 mt-0.5">
