@@ -44,7 +44,7 @@ export default function Dashboard() {
   const [topN, setTopN] = useState(5);
   const [sortMode, setSortMode] = useState<"quantity" | "platforms" | "price" | "batches">("quantity");
   const [sortAsc, setSortAsc] = useState(false);
-  
+
   // Sales form state
   const [showSalesForm, setShowSalesForm] = useState(false);
   const [editSaleId, setEditSaleId] = useState<string | null>(null);
@@ -113,7 +113,7 @@ export default function Dashboard() {
   const handleSubmitSales = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!salesMonth || !salesCatt || !salesTonghop) return;
-    
+
     const isEdit = !!editSaleId;
     const saleId = editSaleId || uuidv4();
 
@@ -123,10 +123,10 @@ export default function Dashboard() {
       catt_quantity: parseInt(salesCatt, 10),
       tonghop_quantity: parseInt(salesTonghop, 10),
     };
-    
+
     // Save to local dexie
     await db.monthlySales.put(saleData);
-    
+
     // Add to sync queue for Supabase
     await db.syncQueue.add({
       id: uuidv4(),
@@ -142,7 +142,7 @@ export default function Dashboard() {
     if (typeof window !== "undefined" && navigator.onLine) {
       processQueue().catch(console.error);
     }
-    
+
     setShowSalesForm(false);
     setEditSaleId(null);
     setSalesMonth("");
@@ -192,8 +192,8 @@ export default function Dashboard() {
               <Package className="w-4 h-4 text-emerald-500" />
             </div>
             <p className="text-xl font-bold text-gray-900">
-              {totalPlants}
-              <span className="text-sm font-medium text-gray-400">/{totalCapacity}</span>
+              {totalPlants.toFixed(2)}
+              <span className="text-sm font-medium text-gray-400">/{totalCapacity.toFixed(2)}</span>
             </p>
             <div className="flex items-center justify-center gap-1.5 mt-0.5">
               <div className="flex-1 max-w-[60px] h-1.5 rounded-full bg-gray-100 overflow-hidden">
