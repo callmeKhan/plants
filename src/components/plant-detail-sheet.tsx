@@ -8,7 +8,7 @@ import { processQueue } from "@/lib/sync";
 import { round2 } from "@/lib/number";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useRouter } from "next/navigation";
+
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search, ImageIcon,
   DollarSign,
@@ -72,13 +72,13 @@ interface PlantDetailSheetProps {
   plantId: string;
   onClose: () => void;
   highlightBatchId?: string;
+  onShowPlatformDetail?: (platformId: string, batchId?: string) => void;
+  zIndex?: number;
 }
 
-export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDetailSheetProps) {
+export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPlatformDetail, zIndex = 50 }: PlantDetailSheetProps) {
   const [openConfirm, confirmModal] = useConfirm();
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
-
-  const router = useRouter();
 
   // Exit animation
   const [isClosing, setIsClosing] = useState(false);
@@ -298,11 +298,12 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
   return (
     <>
       <div
-        className={`fixed inset-0 z-[60] flex flex-col justify-end sheet-backdrop${isClosing ? " closing" : ""}`}
+        className={`fixed inset-0 flex flex-col justify-end sheet-backdrop${isClosing ? " closing" : ""}`}
+        style={{ zIndex }}
         onClick={() => { handleClose(); setEditingName(false); setEditingImage(false); }}
       >
         <div
-          className={`bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col sheet-panel${isClosing ? " closing" : ""}`}
+          className={`bg-white rounded-t-3xl shadow-2xl h-[85vh] flex flex-col sheet-panel${isClosing ? " closing" : ""}`}
           style={{ marginBottom: "64px" }}
           onClick={(e) => e.stopPropagation()}
           onAnimationEnd={handleSheetAnimEnd}
@@ -475,6 +476,15 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
                                   const g = gardens?.find((g) => g.id === p.garden_id)?.name ?? "";
                                   return `${g} tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
                                 })
+                                // format label Vườn A | Tầng 1 - P9 (còn 2)
+                                // order by gardern, then floor, then name
+                                .sort((a, b) => {
+                                  const gA = gardens?.find((g) => g.id === a.garden_id)?.name ?? "";
+                                  const gB = gardens?.find((g) => g.id === b.garden_id)?.name ?? "";
+                                  if (gA !== gB) return gA.localeCompare(gB);
+                                  if (a.floor !== b.floor) return a.floor - b.floor;
+                                  return a.name.localeCompare(b.name, undefined, { numeric: true });
+                                })
                                 .map((p) => {
                                   const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
                                   const g = gardens?.find((g) => g.id === p.garden_id)?.name;
@@ -541,10 +551,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId }: PlantDe
                           </div>
                           <div className="w-full flex items-center justify-between gap-1.5 text-xs text-gray-500">
                             <div className="flex items-center gap-1.5 cursor-pointer underline"
-                              onClick={() => {
-                                if (window.location.pathname.includes("platforms")) return
-                                router.push(`/platforms?detail=${b.platform_id}&highlight=${b.id}`)
-                              }}
+                              onClick={() => onShowPlatformDetail?.(b.platform_id, b.id)}
                             >
                               <MapPin className="w-3 h-3" />
                               <span className="truncate">{platformLabelFull(b.platform_id)}</span>

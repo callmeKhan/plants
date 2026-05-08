@@ -11,7 +11,7 @@ interface ToastProps {
   duration?: number; // ms, default 5000
 }
 
-export function Toast({ msg, onClose, duration = 5000 }: ToastProps) {
+export function Toast({ msg, onClose, duration = 5000 * 10 }: ToastProps) {
   const [fading, setFading] = useState(false);
 
   useEffect(() => {
