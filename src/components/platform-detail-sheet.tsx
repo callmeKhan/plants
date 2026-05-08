@@ -7,12 +7,14 @@ import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { round2 } from "@/lib/number";
+import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
   X, Pencil, Check, Package, Search, Leaf, Plus, Trash2,
+  DollarSign,
 } from "lucide-react";
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
@@ -54,6 +56,11 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   // Edit capacity
   const [editingCapacity, setEditingCapacity] = useState(false);
   const [newCapacity, setNewCapacity] = useState("");
+
+  // Sell batch
+  const [sellingLocId, setSellingLocId] = useState<string | null>(null);
+  const [sellQty, setSellQty] = useState("");
+  const sellCart = useSellCart();
 
   // Move batch
   const [movingLocId, setMovingLocId] = useState<string | null>(null);
@@ -234,6 +241,9 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     processQueue().catch(console.error);
   }
 
+  const cartQtyByLoc = (locId: string) =>
+    sellCart.filter((c) => c.locId === locId).reduce((s, c) => s + c.qty, 0);
+
   return (
     <>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
@@ -363,8 +373,12 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                   {platformLocs.map((loc) => {
                     const plant = plants?.find((p) => p.id === loc.plant_id);
                     const isMoving = movingLocId === loc.id;
+                    const isSelling = sellingLocId === loc.id;
+                    const inCartQty = cartQtyByLoc(loc.id);
+                    const effectiveQty = round2(loc.quantity - inCartQty);
+                    const fullySold = effectiveQty <= 0;
                     return (
-                      <div key={loc.id} className={`rounded-xl px-3 py-2.5 space-y-2 transition-all duration-500 ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"}`}>
+                      <div key={loc.id} className={`rounded-xl px-3 pr-0 py-2.5 space-y-2 transition-all duration-500 ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -381,12 +395,31 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                           >
                             <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
                             <div className="flex justify-start items-center gap-1.5 text-xs text-gray-500 mt-0.5">
-                              <span style={{ width: "65px" }}>{loc.quantity} tấm</span>
+                              <span style={{ width: "65px" }}>
+                                {inCartQty > 0 ? `${effectiveQty}/${loc.quantity}` : loc.quantity} tấm
+                              </span>
                               <span style={{ width: "65px" }}>chậu {loc.pot_size}</span>
                               <span>{fmtDate(loc.planted_date)}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              className="w-8 h-8 rounded-lg flex items-center justify-center"
+                              style={{ backgroundColor: isSelling ? "#dcfce7" : "#ecfdf5", color: isSelling ? "#15803d" : "#34d399" }}
+                              disabled={fullySold && !isSelling}
+                              onClick={() => {
+                                if (isSelling) {
+                                  setSellingLocId(null);
+                                  setSellQty("");
+                                } else {
+                                  setSellingLocId(loc.id);
+                                  setSellQty(String(effectiveQty));
+                                  setMovingLocId(null);
+                                }
+                              }}
+                            >
+                              <DollarSign className="w-4 h-4" />
+                            </button>
                             <button
                               className="w-8 h-8 rounded-lg flex items-center justify-center"
                               style={{ backgroundColor: isMoving ? "#dbeafe" : "#fff7ed" }}
@@ -407,7 +440,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                               <Pencil className="w-4 h-4" style={{ color: isMoving ? "#2563eb" : "#f97316" }} />
                             </button>
                             <button
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 transition-colors"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 bg-red-50"
                               onClick={() => {
                                 openConfirm(
                                   `Xoá ${loc.quantity} tấm "${plant?.name ?? ""}" khỏi sàn?`,
@@ -419,6 +452,50 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                             </button>
                           </div>
                         </div>
+
+                        {/* Inline sell UI */}
+                        {isSelling && (
+                          <div className="space-y-2 rounded-lg bg-emerald-50 p-2">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs text-emerald-800 shrink-0">Số lượng bán:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={effectiveQty}
+                                step="any"
+                                autoFocus
+                                className="w-20 h-7 border border-emerald-200 rounded-lg px-2 text-sm bg-white outline-none text-center"
+                                value={sellQty}
+                                onChange={(e) => setSellQty(e.target.value)}
+                              />
+                              <span className="text-xs text-emerald-700">/ {effectiveQty} tấm</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                className="flex-1 h-9 rounded-lg text-sm font-semibold text-white bg-emerald-600 disabled:bg-emerald-300"
+                                disabled={(() => {
+                                  const v = Number(sellQty);
+                                  return !v || v <= 0 || v > effectiveQty;
+                                })()}
+                                onClick={() => {
+                                  const v = round2(Number(sellQty));
+                                  if (!v || v <= 0 || v > effectiveQty) return;
+                                  sellCartStore.add({ locId: loc.id, qty: v });
+                                  setSellingLocId(null);
+                                  setSellQty("");
+                                }}
+                              >
+                                Thêm vào giỏ bán
+                              </button>
+                              <button
+                                className="flex-1 h-9 rounded-lg text-sm border border-gray-200 text-gray-600"
+                                onClick={() => { setSellingLocId(null); setSellQty(""); }}
+                              >
+                                Huỷ
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Inline move UI */}
                         {isMoving && (

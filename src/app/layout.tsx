@@ -4,6 +4,7 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import SyncProvider from "@/components/SyncProvider";
 import { LoadingProvider } from "@/components/LoadingProvider";
+import { SellCartBar } from "@/components/sell-cart-bar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,6 +51,7 @@ export default function RootLayout({
         <LoadingProvider>
           <SyncProvider>
             <main className="flex-1 pb-20 px-4 pt-4">{children}</main>
+            <SellCartBar />
             <BottomNav />
           </SyncProvider>
         </LoadingProvider>
