@@ -77,27 +77,10 @@ export function SellCartBar() {
         });
       }
 
-      const existing = await db.monthlySales.where("month").equals(month).first();
-      const isEdit = !!existing;
-      const sale = {
-        id: existing?.id ?? uuidv4(),
-        month,
-        catt_quantity: round2((existing?.catt_quantity ?? 0) + cattAdd),
-        tonghop_quantity: round2((existing?.tonghop_quantity ?? 0) + tonghopAdd),
-      };
-      await db.monthlySales.put(sale);
-      await db.syncQueue.add({
-        id: uuidv4(),
-        type: "CREATE",
-        entity: "monthly_sales",
-        payload: sale as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
-      });
-
       const totalSold = cattAdd + tonghopAdd;
       sellCartStore.clear();
       setExpanded(false);
-      setToast({ text: `Thêm ${round2(totalSold)} tấm vào giỏ!`, type: "success" });
+      setToast({ text: `Thêm ${round2(totalSold)} tấm!`, type: "success" });
       processQueue().catch(console.error);
     } finally {
       setProcessing(false);
