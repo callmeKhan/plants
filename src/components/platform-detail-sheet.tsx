@@ -377,8 +377,35 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                     const inCartQty = cartQtyByLoc(loc.id);
                     const effectiveQty = round2(loc.quantity - inCartQty);
                     const fullySold = effectiveQty <= 0;
+                    const hasOtherLocationWithPlantStatus = (locations ?? []).filter(l => l.plant_id === loc.plant_id).some((l) => l.status != null);
+                    const otherLocationWithPlantStatus = (locations ?? []).filter(l => l.plant_id === loc.plant_id).filter(l => l.status != null).map((l) => l.status);
+                    const mapStatusIcons: Record<string, { text: string, bg_color: string }> = {
+                      "trồng lại": {
+                        text: '🌱',
+                        bg_color: 'rgba(255, 237, 164, 1)',
+                      },
+                      "sang chậu": {
+                        text: '🪴',
+                        bg_color: 'rgba(162, 203, 255, 1)',
+                      }
+                    }
                     return (
-                      <div key={loc.id} className={`rounded-xl px-3 pr-0 py-2.5 space-y-2 transition-all duration-500 ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}>
+                      <div key={loc.id} className={`relative rounded-xl px-3 pr-0 py-2.5 space-y-2 transition-all duration-500 ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}>
+                        {hasOtherLocationWithPlantStatus && (
+                          // icon status at bottom left of div
+                          <div className="absolute bottom-0 left-0 flex items-center">
+                            {[...new Set(otherLocationWithPlantStatus)].map((l, i) => (
+                              <div key={i} className={`rounded-lg w-5 h-5 flex border-1 border-white items-center justify-center ${i !== 0 ? "-ml-1" : ""}`}
+                                style={{
+                                  backgroundColor: l && mapStatusIcons[l].bg_color,
+                                }}>
+                                <span className="text-xs font-semibold">
+                                  {l && mapStatusIcons[l].text}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
