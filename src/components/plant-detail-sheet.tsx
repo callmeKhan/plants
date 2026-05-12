@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search, ImageIcon,
-  DollarSign,
+  DollarSign, ChevronRight,
 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-modal";
 
@@ -73,11 +73,12 @@ interface PlantDetailSheetProps {
   plantId: string;
   onClose: () => void;
   highlightBatchId?: string;
-  onShowPlatformDetail?: (platformId: string, batchId?: string) => void;
+  onShowPlatformDetail?: (platformId: string, batchId?: string, label?: string) => void;
+  breadcrumb?: string[];
   zIndex?: number;
 }
 
-export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPlatformDetail, zIndex = 50 }: PlantDetailSheetProps) {
+export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPlatformDetail, breadcrumb, zIndex = 50 }: PlantDetailSheetProps) {
   const [openConfirm, confirmModal] = useConfirm();
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -316,6 +317,17 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
             </div>
             <div className="flex items-start justify-between">
               <div className="flex-1 min-w-0 mr-2">
+                {breadcrumb && breadcrumb.length > 0 && (
+                  <div className="flex flex-col text-xs text-gray-400 mb-2">
+                    {breadcrumb.map((label, i) => (
+                      <div key={i} className="flex items-center gap-1 leading-snug" style={{ paddingLeft: `${i * 10}px` }}>
+                        {i == 0 && "──"}
+                        {i > 0 && "└─"}
+                        <span className="truncate">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {editingName ? (
                   <form onSubmit={(e) => { e.preventDefault(); handleUpdateName(); }} className="flex items-center gap-2">
                     <Input
@@ -552,7 +564,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                           </div>
                           <div className="w-full flex items-center justify-between gap-1.5 text-xs text-gray-500">
                             <div className="flex items-center gap-1.5 cursor-pointer underline"
-                              onClick={() => onShowPlatformDetail?.(b.platform_id, b.id)}
+                              onClick={() => onShowPlatformDetail?.(b.platform_id, b.id, platformLabelFull(b.platform_id))}
                             >
                               <MapPin className="w-3 h-3" />
                               <span className="truncate">{platformLabelFull(b.platform_id)}</span>

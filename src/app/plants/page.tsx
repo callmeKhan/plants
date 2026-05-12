@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, Suspense, useEffect } from "react";
+import { useDetailStack } from "@/lib/use-detail-stack";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
@@ -116,8 +117,7 @@ function PlantsPageInner() {
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [openForm, setOpenForm] = useState(() => searchParams.get("openForm") === "1");
 
-  const [detailPlantId, setDetailPlantId] = useState<string | null>(null);
-  const [detailPlatformId, setDetailPlatformId] = useState<string | null>(null);
+  const { stack, open, push, pop } = useDetailStack();
   const [openConfirm, confirmModal] = useConfirm();
   const [filterStock, setFilterStock] = useState<"all" | "out_of_stock">("all");
   const [filterPotSize, setFilterPotSize] = useState<number[]>([]);
@@ -125,12 +125,10 @@ function PlantsPageInner() {
   const [showFilters, setShowFilters] = useState(false);
   const [closingFilters, setClosingFilters] = useState(false);
 
-  const [highlightBatchId, setHighlightBatchId] = useState<string | null>(null);
-
   useEffect(() => {
-    document.body.style.overflow = detailPlantId ? "hidden" : "";
+    document.body.style.overflow = stack.length > 0 ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [detailPlantId]);
+  }, [stack.length]);
 
   const handleCloseFilters = useCallback(() => {
     setClosingFilters(true);
@@ -683,7 +681,7 @@ function PlantsPageInner() {
                 <button
                   key={pid}
                   className="w-full text-left"
-                  onClick={() => setDetailPlantId(pid)}
+                  onClick={() => open({ type: "plant", id: pid, label: "Cây " + (plants?.find((p) => p.id === pid)?.name ?? pid) })}
                 >
                   <Card className="hover:shadow-md hover:border-emerald-200 transition-all duration-200 active:scale-[0.99]">
                     <CardContent className="py-3 px-4 flex items-start gap-3">
@@ -742,34 +740,43 @@ function PlantsPageInner() {
           </div>
         </div>
 
-        {/* Plant detail sheet */}
-        {detailPlantId && (
-          <PlantDetailSheet
-            plantId={detailPlantId}
-            onClose={() => setDetailPlantId(null)}
-            onShowPlatformDetail={(platformId, batchId) => {
-              setDetailPlatformId(platformId);
-              setHighlightBatchId(batchId ?? null);
-            }}
-          />
-        )}
-
         {/* Confirm modal */}
         {confirmModal}
       </div>
 
-      {/* Platform detail sheet */}
-      {detailPlatformId && (
-        <PlatformDetailSheet
-          platformId={detailPlatformId}
-          onClose={() => {
-            setDetailPlatformId(null);
-            setHighlightBatchId(null);
-          }}
-          zIndex={60}
-          highlightBatchId={highlightBatchId ?? undefined}
-        />
-      )}
+      {/* Detail sheets stack */}
+      {stack.map((item, index) => {
+        const zIdx = 50 + index * 10;
+        const breadcrumb = stack.slice(0, index).map((s) => s.label ?? (s.type === "plant" ? "Cây" : "Sàn"));
+        if (item.type === "plant") {
+          return (
+            <PlantDetailSheet
+              key={`plant-${item.id}-${index}`}
+              plantId={item.id}
+              highlightBatchId={item.highlightBatchId}
+              onClose={pop}
+              onShowPlatformDetail={(platformId, batchId, label) =>
+                push({ type: "platform", id: platformId, highlightBatchId: batchId, label })
+              }
+              breadcrumb={breadcrumb}
+              zIndex={zIdx}
+            />
+          );
+        }
+        return (
+          <PlatformDetailSheet
+            key={`platform-${item.id}-${index}`}
+            platformId={item.id}
+            highlightBatchId={item.highlightBatchId}
+            onClose={pop}
+            onShowPlantDetail={(plantId, batchId, label) =>
+              push({ type: "plant", id: plantId, highlightBatchId: batchId, label })
+            }
+            breadcrumb={breadcrumb}
+            zIndex={zIdx}
+          />
+        );
+      })}
     </>
   );
 }

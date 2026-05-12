@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
+import { useDetailStack } from "@/lib/use-detail-stack";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
@@ -43,14 +44,15 @@ function PlatformsPageInner() {
   const [openPlatform, setOpenPlatform] = useState(false);
 
   const [openConfirm, confirmModal] = useConfirm();
-  const [detailPlatformId, setDetailPlatformId] = useState<string | null>(searchParams.get("detail"));
-  const [detailPlantIdFromPlatform, setDetailPlantIdFromPlatform] = useState<string | null>(null);
-  const [highlightBatchId, setHighlightBatchId] = useState<string | null>(null);
+  const initialDetail = searchParams.get("detail");
+  const { stack, open, push, pop } = useDetailStack(
+    initialDetail ? [{ type: "platform", id: initialDetail }] : []
+  );
 
   useEffect(() => {
-    document.body.style.overflow = detailPlatformId ? "hidden" : "";
+    document.body.style.overflow = stack.length > 0 ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [detailPlatformId]);
+  }, [stack.length]);
 
   const [expandedFloors, setExpandedFloors] = useState<Record<string, boolean>>({});
 
@@ -394,7 +396,7 @@ function PlatformsPageInner() {
                                           <div
                                             key={p.id}
                                             className="w-full text-left cursor-pointer"
-                                            onClick={() => setDetailPlatformId(p.id)}
+                                            onClick={() => open({ type: "platform", id: p.id, label: `${g.name} | Tầng ${floorNum} - ${p.name}` })}
                                           >
                                             <Card className="hover:shadow-md hover:border-blue-200 transition-all duration-200 active:scale-[0.99]">
                                               <CardContent className="py-2.5 px-3">
@@ -468,36 +470,45 @@ function PlatformsPageInner() {
           )}
         </div>
 
-        {/* Platform detail bottom sheet */}
-        {detailPlatformId && (
-          <PlatformDetailSheet
-            platformId={detailPlatformId}
-            onClose={() => setDetailPlatformId(null)}
-            onShowPlantDetail={(plantId, batchId) => {
-              setDetailPlantIdFromPlatform(plantId);
-              setHighlightBatchId(batchId ?? null);
-            }}
-          />
-        )}
-
         {/* Confirm modal */}
         {confirmModal}
       </div>
 
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
-      {/* Plant detail sheet (opened from platform sheet) */}
-      {detailPlantIdFromPlatform && (
-        <PlantDetailSheet
-          plantId={detailPlantIdFromPlatform}
-          highlightBatchId={highlightBatchId ?? undefined}
-          onClose={() => {
-            setDetailPlantIdFromPlatform(null);
-            setHighlightBatchId(null);
-          }}
-          zIndex={60}
-        />
-      )}
+      {/* Detail sheets stack */}
+      {stack.map((item, index) => {
+        const zIdx = 50 + index * 10;
+        const breadcrumb = stack.slice(0, index).map((s) => s.label ?? (s.type === "platform" ? "Sàn" : "Cây"));
+        if (item.type === "platform") {
+          return (
+            <PlatformDetailSheet
+              key={`platform-${item.id}-${index}`}
+              platformId={item.id}
+              highlightBatchId={item.highlightBatchId}
+              onClose={pop}
+              onShowPlantDetail={(plantId, batchId, label) =>
+                push({ type: "plant", id: plantId, highlightBatchId: batchId, label })
+              }
+              breadcrumb={breadcrumb}
+              zIndex={zIdx}
+            />
+          );
+        }
+        return (
+          <PlantDetailSheet
+            key={`plant-${item.id}-${index}`}
+            plantId={item.id}
+            highlightBatchId={item.highlightBatchId}
+            onClose={pop}
+            onShowPlatformDetail={(platformId, batchId, label) =>
+              push({ type: "platform", id: platformId, highlightBatchId: batchId, label })
+            }
+            breadcrumb={breadcrumb}
+            zIndex={zIdx}
+          />
+        );
+      })}
     </>
   );
 }

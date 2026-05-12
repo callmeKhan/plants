@@ -14,7 +14,7 @@ import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
   X, Pencil, Check, Package, Leaf, Plus, Trash2,
-  DollarSign,
+  DollarSign, ChevronRight,
 } from "lucide-react";
 import { PlatformGridModal } from "@/components/platform-grid-modal";
 
@@ -29,12 +29,13 @@ function fmtDate(d: string) {
 interface PlatformDetailSheetProps {
   platformId: string;
   onClose: () => void;
-  onShowPlantDetail?: (plantId: string, batchId?: string) => void;
+  onShowPlantDetail?: (plantId: string, batchId?: string, label?: string) => void;
   highlightBatchId?: string;
+  breadcrumb?: string[];
   zIndex?: number;
 }
 
-export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, highlightBatchId, zIndex = 50 }: PlatformDetailSheetProps) {
+export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, highlightBatchId, breadcrumb, zIndex = 50 }: PlatformDetailSheetProps) {
   const [openConfirm, confirmModal] = useConfirm();
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -316,6 +317,17 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
             </div>
             <div className="flex items-start justify-between">
               <div className="flex-1 min-w-0 mr-2">
+                {breadcrumb && breadcrumb.length > 0 && (
+                  <div className="flex flex-col text-xs text-gray-400 mb-2">
+                    {breadcrumb.map((label, i) => (
+                      <div key={i} className="flex items-center gap-1 leading-snug" style={{ paddingLeft: `${i * 10}px` }}>
+                        {i == 0 && "──"}
+                        {i > 0 && "└─"}
+                        <span className="truncate">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {editingPlatformName ? (
                   <form onSubmit={(e) => { e.preventDefault(); handleUpdatePlatformName(); }} className="flex items-center gap-2">
                     <Input
@@ -464,7 +476,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                           </div>
                           <div
                             className="flex-1 min-w-0 cursor-pointer"
-                            onClick={() => onShowPlantDetail?.(loc.plant_id, loc.id)}
+                            onClick={() => onShowPlantDetail?.(loc.plant_id, loc.id, plant?.name ?? loc.plant_id)}
                           >
                             <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
                             <div className="flex justify-start items-center gap-1.5 text-xs text-gray-500 mt-0.5">

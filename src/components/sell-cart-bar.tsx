@@ -96,7 +96,7 @@ export function SellCartBar() {
 
       <div
         className="fixed left-0 right-0 bg-white border-t border-emerald-100 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]"
-        style={{ bottom: 64, zIndex: 55 }}
+        style={{ bottom: 64, zIndex: 95 }}
       >
         {expanded && (
           <div className="px-4 pt-3 pb-1 max-h-56 overflow-y-auto space-y-1 border-b border-gray-50">
