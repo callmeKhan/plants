@@ -10,7 +10,6 @@ import { round2 } from "@/lib/number";
 import { currentTimeMs } from "@/lib/time";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
@@ -85,6 +84,17 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
   const free = round2(detailPlatform.capacity - used);
   const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
+
+  function moveTargetFloorsForGarden(gardenId: string) {
+    if (!gardenId) return [];
+    return Array.from(new Set(
+      (platforms ?? [])
+        .filter((p) => p.garden_id === gardenId && p.id !== platformId)
+        .map((p) => p.floor)
+    )).sort((a, b) => a - b);
+  }
+
+  const moveTargetFloors = moveTargetFloorsForGarden(moveTargetGardenId);
 
   async function handleUpdatePlatformName() {
     if (!newPlatformName.trim() || !detailPlatform) return;
@@ -585,13 +595,17 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                 className="flex-1 h-8 rounded-xl border border-gray-200 bg-white px-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 appearance-none cursor-pointer"
                                 value={moveTargetGardenId}
                                 onChange={(e) => {
-                                  setMoveTargetGardenId(e.target.value);
-                                  setMoveTargetFloor("");
+                                  const nextGardenId = e.target.value;
+                                  const nextFloors = moveTargetFloorsForGarden(nextGardenId);
+                                  const nextFloor = nextFloors.length === 1 ? nextFloors[0] : "";
+                                  setMoveTargetGardenId(nextGardenId);
+                                  setMoveTargetFloor(nextFloor);
                                   setMoveTargetPlatformId("");
+                                  setShowPlatformGridModal(nextGardenId !== "" && nextFloor !== "");
                                 }}
                               >
                                 <option value="">— Chọn vườn —</option>
-                                {(gardens ?? []).sort((a, b) => a.name.localeCompare(b.name)).map((g) => (
+                                {[...(gardens ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((g) => (
                                   <option key={g.id} value={g.id}>{g.name}</option>
                                 ))}
                               </select>
@@ -607,11 +621,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                 }}
                               >
                                 <option value="">— Tầng —</option>
-                                {Array.from(new Set(
-                                  (platforms ?? [])
-                                    .filter((p) => p.garden_id === moveTargetGardenId && p.id !== platformId)
-                                    .map((p) => p.floor)
-                                )).sort((a, b) => a - b).map((f) => (
+                                {moveTargetFloors.map((f) => (
                                   <option key={f} value={f}>Tầng {f}</option>
                                 ))}
                               </select>

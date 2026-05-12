@@ -238,9 +238,9 @@ function PlatformsPageInner() {
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {gardens?.map((g) => {
                   const gardenPlatformIds = (platforms ?? []).filter((p) => p.garden_id === g.id).map((p) => p.id);
-                  const plantCount = (locations ?? [])
+                  const plantCount = round2((locations ?? [])
                     .filter((l) => gardenPlatformIds.includes(l.platform_id))
-                    .reduce((s, l) => s + l.quantity, 0);
+                    .reduce((s, l) => s + l.quantity, 0));
                   const platformCount = gardenPlatformIds.length;
                   return (
                     <Card key={g.id} className="shrink-0">
@@ -301,14 +301,14 @@ function PlatformsPageInner() {
                       ))}
                     </Select>
                     <Input
-                      className="w-[65px] h-10"
+                      className="w-[65px] h-8"
                       placeholder="Tầng"
                       type="number"
                       value={floor}
                       onChange={(e) => setFloor(e.target.value)}
                     />
                     <Input
-                      className="w-[120px] h-10"
+                      className="w-[120px] h-8"
                       placeholder="📦 Sức chứa"
                       type="number"
                       min={0}

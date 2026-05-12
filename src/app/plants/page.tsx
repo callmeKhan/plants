@@ -148,17 +148,30 @@ function PlantsPageInner() {
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
   const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
 
-  const floorsInGarden = [...new Set(
-    platforms
-      ?.filter((p) => !filterGarden || p.garden_id === filterGarden)
-      .map((p) => p.floor) ?? []
-  )].sort((a, b) => a - b);
+  function floorsForGarden(gardenId: string) {
+    return Array.from(new Set(
+      (platforms ?? [])
+        .filter((p) => !gardenId || p.garden_id === gardenId)
+        .map((p) => p.floor)
+    )).sort((a, b) => a - b);
+  }
+
+  const floorsInGarden = floorsForGarden(filterGarden);
 
   const filteredPlatforms = platforms?.filter((p) => {
     if (filterGarden && p.garden_id !== filterGarden) return false;
     if (filterFloor && p.floor !== Number(filterFloor)) return false;
     return true;
   });
+
+  function handleGardenChange(gardenId: string) {
+    const gardenFloors = floorsForGarden(gardenId);
+    setParams({
+      garden: gardenId,
+      floor: gardenId && gardenFloors.length === 1 ? String(gardenFloors[0]) : "",
+      platform: "",
+    });
+  }
 
 
 
@@ -386,7 +399,7 @@ function PlantsPageInner() {
                 <div className="grid gap-2 mt-0 " style={{ gridTemplateColumns: "1fr 2fr", gridTemplateRows: "auto auto" }}>
                   <Select
                     value={filterGarden}
-                    onChange={(e) => { setParams({ garden: e.target.value, floor: "", platform: "" }); }}
+                    onChange={(e) => handleGardenChange(e.target.value)}
                   >
                     <option value="">Vườn</option>
                     {gardens?.map((g) => (
