@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { round2 } from "@/lib/number";
+import { currentTimeMs } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -144,7 +145,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     await db.syncQueue.add({
       id: uuidv4(), type: "UPDATE", entity: "plant",
       payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     setEditingName(false);
     processQueue().catch(console.error);
@@ -157,7 +158,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     await db.syncQueue.add({
       id: uuidv4(), type: "UPDATE", entity: "plant",
       payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     setEditingImage(false);
     setNewImageUrl("");
@@ -202,14 +203,14 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
         await db.syncQueue.add({
           id: uuidv4(), type: "UPDATE", entity: "plant_location",
           payload: { ...existingBatch, quantity: mergedQty } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: Date.now(),
+          status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
 
         await db.plantLocations.delete(batchId);
         await db.syncQueue.add({
           id: uuidv4(), type: "DELETE", entity: "plant_location",
           payload: { id: batchId } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: Date.now(),
+          status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
 
         // Update plant total_quantity if quantity value changed
@@ -219,7 +220,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
           await db.syncQueue.add({
             id: uuidv4(), type: "UPDATE", entity: "plant",
             payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-            status: "pending", retry_count: 0, created_at: Date.now(),
+            status: "pending", retry_count: 0, created_at: currentTimeMs(),
           });
         }
 
@@ -241,7 +242,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     await db.syncQueue.add({
       id: uuidv4(), type: "UPDATE", entity: "plant_location",
       payload: { ...(batch ?? {}), ...updates, id: batchId } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     if (newQty !== oldQty) {
       const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
@@ -249,7 +250,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",
         payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
     }
     setEditingBatchId(null);
@@ -262,14 +263,14 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "plant_location",
       payload: { id: batchId } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     const newTotal = Math.max(0, round2(plant.total_quantity - qty));
     await db.plants.update(plantId, { total_quantity: newTotal });
     await db.syncQueue.add({
       id: uuidv4(), type: "UPDATE", entity: "plant",
       payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     processQueue().catch(console.error);
   }
@@ -280,14 +281,14 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
       await db.syncQueue.add({
         id: uuidv4(), type: "DELETE", entity: "plant_location",
         payload: { id: b.id } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
     }
     await db.plants.delete(plantId);
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "plant",
       payload: { id: plantId } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     processQueue().catch(console.error);
     onClose();

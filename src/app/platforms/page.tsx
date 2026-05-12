@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { Input } from "@/components/ui/input";
 import { round2 } from "@/lib/number";
+import { currentTimeMs } from "@/lib/time";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -69,7 +70,7 @@ function PlatformsPageInner() {
     await db.gardens.add(garden);
     await db.syncQueue.add({
       id: uuidv4(), type: "CREATE", entity: "garden",
-      payload: garden, status: "pending", retry_count: 0, created_at: Date.now(),
+      payload: garden, status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     setGardenName("");
     setToast({ text: `Đã thêm vườn: ${garden.name}`, type: "success" });
@@ -87,19 +88,19 @@ function PlatformsPageInner() {
         await db.plantLocations.delete(loc.id);
         await db.syncQueue.add({
           id: uuidv4(), type: "DELETE", entity: "plant_location",
-          payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: Date.now(),
+          payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
       }
       await db.platforms.delete(p.id);
       await db.syncQueue.add({
         id: uuidv4(), type: "DELETE", entity: "platform",
-        payload: { id: p.id }, status: "pending", retry_count: 0, created_at: Date.now(),
+        payload: { id: p.id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
     }
     await db.gardens.delete(id);
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "garden",
-      payload: { id }, status: "pending", retry_count: 0, created_at: Date.now(),
+      payload: { id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     for (const plantId of deletedPlantIds) {
       const remaining = await db.plantLocations.where("plant_id").equals(plantId).count();
@@ -107,7 +108,7 @@ function PlatformsPageInner() {
         await db.plants.delete(plantId);
         await db.syncQueue.add({
           id: uuidv4(), type: "DELETE", entity: "plant",
-          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: Date.now(),
+          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
       }
     }
@@ -146,7 +147,7 @@ function PlatformsPageInner() {
     await db.platforms.add(platform);
     await db.syncQueue.add({
       id: uuidv4(), type: "CREATE", entity: "platform",
-      payload: platform, status: "pending", retry_count: 0, created_at: Date.now(),
+      payload: platform, status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     setFloor(""); setName(""); setCapacity("");
     setToast({ text: `Đã thêm sàn: ${platform.name}`, type: "success" });
@@ -161,13 +162,13 @@ function PlatformsPageInner() {
       await db.plantLocations.delete(loc.id);
       await db.syncQueue.add({
         id: uuidv4(), type: "DELETE", entity: "plant_location",
-        payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: Date.now(),
+        payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
     }
     await db.platforms.delete(id);
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "platform",
-      payload: { id }, status: "pending", retry_count: 0, created_at: Date.now(),
+      payload: { id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     for (const plantId of deletedPlantIds) {
       const remaining = await db.plantLocations.where("plant_id").equals(plantId).count();
@@ -175,7 +176,7 @@ function PlatformsPageInner() {
         await db.plants.delete(plantId);
         await db.syncQueue.add({
           id: uuidv4(), type: "DELETE", entity: "plant",
-          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: Date.now(),
+          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
       }
     }

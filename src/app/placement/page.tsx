@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { round2 } from "@/lib/number";
+import { currentTimeMs } from "@/lib/time";
 import { v4 as uuidv4 } from "uuid";
 
 export default function PlacementPage() {
@@ -87,7 +88,7 @@ export default function PlacementPage() {
         payload: { ...existing, quantity: newQty },
         status: "pending",
         retry_count: 0,
-        created_at: Date.now(),
+        created_at: currentTimeMs(),
       });
     } else {
       const id = uuidv4();
@@ -100,7 +101,7 @@ export default function PlacementPage() {
         payload: loc,
         status: "pending",
         retry_count: 0,
-        created_at: Date.now(),
+        created_at: currentTimeMs(),
       });
     }
 

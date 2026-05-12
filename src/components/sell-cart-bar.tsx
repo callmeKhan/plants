@@ -7,6 +7,7 @@ import { ShoppingCart, X, ChevronDown, ChevronUp } from "lucide-react";
 import { db } from "@/lib/db";
 import { round2 } from "@/lib/number";
 import { processQueue } from "@/lib/sync";
+import { currentTimeMs } from "@/lib/time";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
@@ -52,7 +53,7 @@ export function SellCartBar() {
           await db.plantLocations.delete(locId);
           await db.syncQueue.add({
             id: uuidv4(), type: "DELETE", entity: "plant_location",
-            payload: { id: locId }, status: "pending", retry_count: 0, created_at: Date.now(),
+            payload: { id: locId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
           });
         } else {
           const newQty = round2(loc.quantity - sellAmt);
@@ -60,7 +61,7 @@ export function SellCartBar() {
           await db.syncQueue.add({
             id: uuidv4(), type: "UPDATE", entity: "plant_location",
             payload: { ...loc, quantity: newQty } as Record<string, unknown>,
-            status: "pending", retry_count: 0, created_at: Date.now(),
+            status: "pending", retry_count: 0, created_at: currentTimeMs(),
           });
         }
       }
@@ -73,7 +74,7 @@ export function SellCartBar() {
         await db.syncQueue.add({
           id: uuidv4(), type: "UPDATE", entity: "plant",
           payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: Date.now(),
+          status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
       }
 

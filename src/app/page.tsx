@@ -1,12 +1,13 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { db, type MonthlySale } from "@/lib/db";
 import { processQueue } from "@/lib/sync";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { round2 } from "@/lib/number";
+import { currentTimeMs } from "@/lib/time";
 import { Badge } from "@/components/ui/badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { MonthlySalesChart } from "@/components/monthly-sales-chart";
@@ -134,11 +135,11 @@ export default function Dashboard() {
     await db.syncQueue.add({
       id: uuidv4(),
       type: isEdit ? "UPDATE" : "CREATE",
-      entity: "monthly_sales" as any,
+      entity: "monthly_sales",
       payload: saleData,
       status: "pending",
       retry_count: 0,
-      created_at: Date.now(),
+      created_at: currentTimeMs(),
     });
 
     // Trigger sync immediately instead of waiting 30 seconds
@@ -153,7 +154,7 @@ export default function Dashboard() {
     setSalesTonghop("");
   };
 
-  const handleBarClick = (data: any) => {
+  const handleBarClick = (data: (Partial<MonthlySale> & { payload?: MonthlySale }) | null) => {
     if (!data) return;
     const sale = data.payload || data;
     if (!sale || !sale.id) return;

@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { Input } from "@/components/ui/input";
 import { round2 } from "@/lib/number";
+import { currentTimeMs } from "@/lib/time";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -180,7 +181,7 @@ function PlantsPageInner() {
       await db.syncQueue.add({
         id: uuidv4(), type: "CREATE", entity: "plant",
         payload: newPlant as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
       plant = newPlant;
     } else {
@@ -189,7 +190,7 @@ function PlantsPageInner() {
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",
         payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
       plant = { ...plant, total_quantity: newTotal };
     }
@@ -213,7 +214,7 @@ function PlantsPageInner() {
     await db.syncQueue.add({
       id: uuidv4(), type: "CREATE", entity: "plant_location",
       payload: loc as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
 
     setName(""); setSelectedPlantId(null); setQuantity(""); setPrice("");

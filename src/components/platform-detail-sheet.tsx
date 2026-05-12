@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 import { processQueue } from "@/lib/sync";
 import { round2 } from "@/lib/number";
+import { currentTimeMs } from "@/lib/time";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -99,7 +100,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     await db.syncQueue.add({
       id: uuidv4(), type: "UPDATE", entity: "platform",
       payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     setEditingPlatformName(false);
     processQueue().catch(console.error);
@@ -121,7 +122,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     await db.syncQueue.add({
       id: uuidv4(), type: "UPDATE", entity: "platform",
       payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: Date.now(),
+      status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     setEditingCapacity(false);
     processQueue().catch(console.error);
@@ -167,14 +168,14 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant_location",
         payload: { ...matchingBatch, quantity: mergedQty } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
 
       if (qty === loc.quantity) {
         await db.plantLocations.delete(locId);
         await db.syncQueue.add({
           id: uuidv4(), type: "DELETE", entity: "plant_location",
-          payload: { id: locId }, status: "pending", retry_count: 0, created_at: Date.now(),
+          payload: { id: locId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
       } else {
         const newOrigQty = round2(loc.quantity - qty);
@@ -182,7 +183,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         await db.syncQueue.add({
           id: uuidv4(), type: "UPDATE", entity: "plant_location",
           payload: { ...loc, quantity: newOrigQty } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: Date.now(),
+          status: "pending", retry_count: 0, created_at: currentTimeMs(),
         });
       }
     } else if (qty === loc.quantity) {
@@ -190,7 +191,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant_location",
         payload: { ...loc, platform_id: moveTargetPlatformId } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
     } else {
       const newOrigQty = round2(loc.quantity - qty);
@@ -198,7 +199,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant_location",
         payload: { ...loc, quantity: newOrigQty } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
       const newLoc = {
         id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
@@ -210,7 +211,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       await db.syncQueue.add({
         id: uuidv4(), type: "CREATE", entity: "plant_location",
         payload: newLoc as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
     }
 
@@ -241,7 +242,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     await db.plantLocations.delete(locId);
     await db.syncQueue.add({
       id: uuidv4(), type: "DELETE", entity: "plant_location",
-      payload: { id: locId }, status: "pending", retry_count: 0, created_at: Date.now(),
+      payload: { id: locId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
     });
     const plant = await db.plants.get(loc.plant_id);
     if (plant) {
@@ -250,7 +251,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       await db.syncQueue.add({
         id: uuidv4(), type: "UPDATE", entity: "plant",
         payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: Date.now(),
+        status: "pending", retry_count: 0, created_at: currentTimeMs(),
       });
     }
     setToast({ text: "Đã xoá đợt khỏi sàn", type: "success" });
