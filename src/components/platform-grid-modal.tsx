@@ -133,7 +133,7 @@ export function PlatformGridModal({
           </div>
 
           <p className="text-xs text-gray-400 mt-0.5">
-            Cần <span className="text-emerald-600">{neededQty} chỗ trống</span>
+            Cần <span className="text-emerald-600">{neededQty} tấm</span>
           </p>
 
           <div className="mt-3 flex items-center gap-2">
@@ -206,7 +206,7 @@ export function PlatformGridModal({
                         }`}
                       >
                         <div className="font-semibold text-sm">{p.name}</div>
-                        <div className="text-[10px] text-gray-400">còn {p.freeSlots} chỗ</div>
+                        <div className="text-[10px] text-gray-400">còn {p.freeSlots} tấm</div>
                       </button>
                     );
                   })}

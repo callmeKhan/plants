@@ -1,13 +1,10 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type MonthlySale } from "@/lib/db";
-import { processQueue } from "@/lib/sync";
+import { db } from "@/lib/db";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { v4 as uuidv4 } from "uuid";
 import { round2 } from "@/lib/number";
-import { currentTimeMs } from "@/lib/time";
 import { Badge } from "@/components/ui/badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { MonthlySalesChart } from "@/components/monthly-sales-chart";
@@ -37,7 +34,6 @@ export default function Dashboard() {
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
   const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
   const plants = useLiveQuery(() => db.plants.toArray(), [], []);
-  const monthlySales = useLiveQuery(() => db.monthlySales.toArray(), [], []);
 
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
@@ -46,13 +42,6 @@ export default function Dashboard() {
   const [topN, setTopN] = useState(5);
   const [sortMode, setSortMode] = useState<"quantity" | "platforms" | "price" | "batches">("quantity");
   const [sortAsc, setSortAsc] = useState(false);
-
-  // Sales form state
-  const [showSalesForm, setShowSalesForm] = useState(false);
-  const [editSaleId, setEditSaleId] = useState<string | null>(null);
-  const [salesMonth, setSalesMonth] = useState("");
-  const [salesCatt, setSalesCatt] = useState("");
-  const [salesTonghop, setSalesTonghop] = useState("");
 
   const [highlightBatchId, setHighlightBatchId] = useState<string | null>(null);
 
@@ -112,66 +101,6 @@ export default function Dashboard() {
       return sortAsc ? -diff : diff;
     })
     .slice(0, topN);
-
-  // ── Handlers ──
-  const handleSubmitSales = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!salesMonth || !salesCatt || !salesTonghop) return;
-
-    const isEdit = !!editSaleId;
-    const saleId = editSaleId || uuidv4();
-
-    const saleData = {
-      id: saleId,
-      month: salesMonth,
-      catt_quantity: parseInt(salesCatt, 10),
-      tonghop_quantity: parseInt(salesTonghop, 10),
-    };
-
-    // Save to local dexie
-    await db.monthlySales.put(saleData);
-
-    // Add to sync queue for Supabase
-    await db.syncQueue.add({
-      id: uuidv4(),
-      type: isEdit ? "UPDATE" : "CREATE",
-      entity: "monthly_sales",
-      payload: saleData,
-      status: "pending",
-      retry_count: 0,
-      created_at: currentTimeMs(),
-    });
-
-    // Trigger sync immediately instead of waiting 30 seconds
-    if (typeof window !== "undefined" && navigator.onLine) {
-      processQueue().catch(console.error);
-    }
-
-    setShowSalesForm(false);
-    setEditSaleId(null);
-    setSalesMonth("");
-    setSalesCatt("");
-    setSalesTonghop("");
-  };
-
-  const handleBarClick = (data: (Partial<MonthlySale> & { payload?: MonthlySale }) | null) => {
-    if (!data) return;
-    const sale = data.payload || data;
-    if (!sale || !sale.id) return;
-    setEditSaleId(sale.id);
-    setSalesMonth(sale.month);
-    setSalesCatt(sale.catt_quantity.toString());
-    setSalesTonghop(sale.tonghop_quantity.toString());
-    setShowSalesForm(true);
-  };
-
-  const handleOpenAddForm = () => {
-    setEditSaleId(null);
-    setSalesMonth("");
-    setSalesCatt("");
-    setSalesTonghop("");
-    setShowSalesForm(true);
-  };
 
   return (
     <>
