@@ -13,9 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
-  X, Pencil, Check, Package, Search, Leaf, Plus, Trash2,
+  X, Pencil, Check, Package, Leaf, Plus, Trash2,
   DollarSign,
 } from "lucide-react";
+import { PlatformGridModal } from "@/components/platform-grid-modal";
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 
@@ -66,8 +67,9 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [movingLocId, setMovingLocId] = useState<string | null>(null);
   const [moveTargetPlatformId, setMoveTargetPlatformId] = useState("");
   const [moveQty, setMoveQty] = useState("");
-  const [movePlatformSearch, setMovePlatformSearch] = useState("");
-  const [showMovePlatformDropdown, setShowMovePlatformDropdown] = useState(false);
+  const [moveTargetGardenId, setMoveTargetGardenId] = useState("");
+  const [moveTargetFloor, setMoveTargetFloor] = useState<number | "">("");
+  const [showPlatformGridModal, setShowPlatformGridModal] = useState(false);
 
   const detailPlatform = useLiveQuery(() => db.platforms.get(platformId), [platformId]);
   const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
@@ -127,6 +129,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
 
   async function doMoveBatch(locId: string) {
     if (!moveTargetPlatformId) return;
+    if (!detailPlatform) return;
     const loc = (locations ?? []).find((l) => l.id === locId);
     if (!loc) return;
     const targetPlatform = platforms?.find((p) => p.id === moveTargetPlatformId);
@@ -214,8 +217,21 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     setMovingLocId(null);
     setMoveTargetPlatformId("");
     setMoveQty("");
-    setMovePlatformSearch("");
-    setToast({ text: `Đã chuyển ${qty} tấm thành công!${matchingBatch && qty === loc.quantity ? " (Gộp vào đợt cũ)" : ""}`, type: "success" });
+    setMoveTargetGardenId("");
+    setMoveTargetFloor("");
+
+    const srcGarden = gardens?.find((g) => g.id === detailPlatform.garden_id);
+    const dstGarden = gardens?.find((g) => g.id === targetPlatform.garden_id);
+    const srcLabel = `${srcGarden?.name ?? ""} Tầng ${detailPlatform.floor} ${detailPlatform.name}`;
+    const dstLabel = `${dstGarden?.name ?? ""} Tầng ${targetPlatform.floor} ${targetPlatform.name}`;
+    const mergeNote = matchingBatch && qty === loc.quantity ? " (Gộp vào đợt cũ)" : "";
+    // moveRecord: tách ra để dễ mở rộng lưu audit log sau này
+    const moveRecord = {
+      qty,
+      src: { gardenName: srcGarden?.name ?? "", floor: detailPlatform.floor, platformName: detailPlatform.name },
+      dst: { gardenName: dstGarden?.name ?? "", floor: targetPlatform.floor, platformName: targetPlatform.name },
+    };
+    setToast({ text: `Đã chuyển ${moveRecord.qty} cây từ ${srcLabel} → ${dstLabel}${mergeNote}`, type: "success" });
     processQueue().catch(console.error);
   }
 
@@ -243,6 +259,29 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
 
   const cartQtyByLoc = (locId: string) =>
     sellCart.filter((c) => c.locId === locId).reduce((s, c) => s + c.qty, 0);
+
+  function handleMoveQtyChange(rawValue: string, maxQty: number) {
+    const nextQty = Math.min(Number(rawValue), maxQty);
+    const nextMoveQty = nextQty > 0 ? String(nextQty) : "";
+    setMoveQty(nextMoveQty);
+
+    if (!moveTargetPlatformId) return;
+
+    const targetPlatform = platforms?.find((p) => p.id === moveTargetPlatformId);
+    if (!targetPlatform) return;
+
+    const requiredQty = round2(nextQty || maxQty);
+    const freeSlots = round2(
+      targetPlatform.capacity -
+        (locations ?? [])
+          .filter((l) => l.platform_id === targetPlatform.id)
+          .reduce((s, l) => s + l.quantity, 0)
+    );
+
+    if (freeSlots < requiredQty) {
+      setMoveTargetPlatformId("");
+    }
+  }
 
   return (
     <>
@@ -451,12 +490,16 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                   setMovingLocId(null);
                                   setMoveTargetPlatformId("");
                                   setMoveQty("");
-                                  setMovePlatformSearch("");
+                                  setMoveTargetGardenId("");
+                                  setMoveTargetFloor("");
+                                  setShowPlatformGridModal(false);
                                 } else {
                                   setMovingLocId(loc.id);
                                   setMoveTargetPlatformId("");
                                   setMoveQty(String(loc.quantity));
-                                  setMovePlatformSearch("");
+                                  setMoveTargetGardenId("");
+                                  setMoveTargetFloor("");
+                                  setShowPlatformGridModal(false);
                                 }
                               }}
                             >
@@ -523,7 +566,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                         {/* Inline move UI */}
                         {isMoving && (
                           <div className="space-y-2">
-                            <div className="flex items-center gap-2">
+                            {/* <div className="flex items-center gap-2">
                               <label className="text-xs text-gray-500 shrink-0">Số lượng chuyển:</label>
                               <input
                                 type="number"
@@ -531,83 +574,71 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                 max={loc.quantity}
                                 className="w-16 h-6 border border-blue-200 rounded-lg px-2 text-sm bg-white outline-none text-center"
                                 value={moveQty}
-                                onChange={(e) => {
-                                  const v = Math.min(Number(e.target.value), loc.quantity);
-                                  setMoveQty(String(v > 0 ? v : ""));
-                                }}
+                                onChange={(e) => handleMoveQtyChange(e.target.value, loc.quantity)}
                               />
                               <span className="text-xs text-gray-400">/ {loc.quantity} tấm</span>
-                            </div>
-                            <div className="relative">
-                              <div
-                                className="flex items-center border border-blue-200 rounded-lg bg-white px-2 h-9 gap-1 cursor-text"
-                                onClick={() => setShowMovePlatformDropdown(true)}
+                            </div> */}
+                            {/* Garden + Floor selects */}
+                            <div className="flex gap-2">
+                              <select
+                                className="flex-1 h-8 rounded-xl border border-gray-200 bg-white px-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 appearance-none cursor-pointer"
+                                value={moveTargetGardenId}
+                                onChange={(e) => {
+                                  setMoveTargetGardenId(e.target.value);
+                                  setMoveTargetFloor("");
+                                  setMoveTargetPlatformId("");
+                                }}
                               >
-                                <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                <input
-                                  className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0"
-                                  placeholder={
-                                    moveTargetPlatformId
-                                      ? (() => {
-                                        const p = platforms?.find((pl) => pl.id === moveTargetPlatformId);
-                                        const g = gardens?.find((gl) => gl.id === p?.garden_id);
-                                        return p ? `${g ? g.name + " | " : ""}Tầng ${p.floor} - ${p.name}` : "";
-                                      })()
-                                      : "— Chọn sàn đích —"
-                                  }
-                                  value={movePlatformSearch}
-                                  onChange={(e) => { setMovePlatformSearch(e.target.value); setShowMovePlatformDropdown(true); }}
-                                  onFocus={() => setShowMovePlatformDropdown(true)}
-                                  onBlur={() => setTimeout(() => setShowMovePlatformDropdown(false), 150)}
-                                />
-                                {moveTargetPlatformId && (
-                                  <button
-                                    type="button"
-                                    className="shrink-0 text-gray-400 hover:text-gray-600"
-                                    onMouseDown={(e) => { e.preventDefault(); setMoveTargetPlatformId(""); setMovePlatformSearch(""); }}
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                              {showMovePlatformDropdown && (
-                                <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
-                                  {(platforms ?? [])
-                                    .filter((p) => p.id !== platformId)
-                                    // format label Vườn A | Tầng 1 - P9 (còn 2)
-                                    // order by gardern, then floor, then name
-                                    .sort((a, b) => {
-                                      const gA = gardens?.find((g) => g.id === a.garden_id)?.name ?? "";
-                                      const gB = gardens?.find((g) => g.id === b.garden_id)?.name ?? "";
-                                      if (gA !== gB) return gA.localeCompare(gB);
-                                      if (a.floor !== b.floor) return a.floor - b.floor;
-                                      return a.name.localeCompare(b.name, undefined, { numeric: true });
-                                    })
-                                    .filter((p) => {
-                                      if (!movePlatformSearch.trim()) return true;
-                                      const q = movePlatformSearch.toLowerCase();
-                                      const g = gardens?.find((gl) => gl.id === p.garden_id);
-                                      const freeSlots = round2(p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
-                                      return `${g?.name ?? ""} tầng ${p.floor} ${p.name} ${freeSlots}`.toLowerCase().includes(q);
-                                    })
-                                    .map((p) => {
-                                      const g = gardens?.find((gl) => gl.id === p.garden_id);
-                                      const freeSlots = round2(p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
-                                      const label = `${g ? g.name + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${freeSlots})`;
-                                      return (
-                                        <li
-                                          key={p.id}
-                                          className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${moveTargetPlatformId === p.id ? "bg-blue-50 font-medium text-blue-700" : "text-gray-800"} ${freeSlots < loc.quantity ? "opacity-50" : ""}`}
-                                          onMouseDown={() => { setMoveTargetPlatformId(p.id); setMovePlatformSearch(""); setShowMovePlatformDropdown(false); }}
-                                        >
-                                          {label}
-                                          {freeSlots < loc.quantity && <span className="ml-1 text-red-400 text-xs">(không đủ)</span>}
-                                        </li>
-                                      );
-                                    })}
-                                </ul>
-                              )}
+                                <option value="">— Chọn vườn —</option>
+                                {(gardens ?? []).sort((a, b) => a.name.localeCompare(b.name)).map((g) => (
+                                  <option key={g.id} value={g.id}>{g.name}</option>
+                                ))}
+                              </select>
+                              <select
+                                className="flex-1 h-8 rounded-xl border border-gray-200 bg-white px-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 appearance-none cursor-pointer disabled:opacity-40"
+                                value={moveTargetFloor === "" ? "" : String(moveTargetFloor)}
+                                disabled={!moveTargetGardenId}
+                                onChange={(e) => {
+                                  const val = e.target.value === "" ? "" : Number(e.target.value);
+                                  setMoveTargetFloor(val);
+                                  setMoveTargetPlatformId("");
+                                  if (val !== "") setShowPlatformGridModal(true);
+                                }}
+                              >
+                                <option value="">— Tầng —</option>
+                                {Array.from(new Set(
+                                  (platforms ?? [])
+                                    .filter((p) => p.garden_id === moveTargetGardenId && p.id !== platformId)
+                                    .map((p) => p.floor)
+                                )).sort((a, b) => a - b).map((f) => (
+                                  <option key={f} value={f}>Tầng {f}</option>
+                                ))}
+                              </select>
                             </div>
+
+                            {/* Sàn đã chọn + trigger mở modal */}
+                            {moveTargetGardenId && moveTargetFloor !== "" && (
+                              <button
+                                type="button"
+                                className={`w-full h-9 rounded-xl border text-sm px-3 flex items-center justify-between transition-colors ${
+                                  moveTargetPlatformId
+                                    ? "border-blue-400 bg-blue-50 text-blue-700"
+                                    : "border-gray-200 bg-white text-gray-400 hover:border-blue-300"
+                                }`}
+                                onClick={() => setShowPlatformGridModal(true)}
+                              >
+                                <span className="font-medium">
+                                  {moveTargetPlatformId
+                                    ? (() => {
+                                        const p = platforms?.find((pl) => pl.id === moveTargetPlatformId);
+                                        return p ? `${p.name} (còn ${round2(p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0))} chỗ)` : "— Chọn sàn —";
+                                      })()
+                                    : "— Chọn sàn —"}
+                                </span>
+                                <span className="text-[11px] text-gray-400">Xem sơ đồ →</span>
+                              </button>
+                            )}
+
                             <div className="flex gap-2">
                               <button
                                 className="flex-1 h-9 rounded-lg text-sm font-semibold text-white"
@@ -616,7 +647,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                 onClick={() => {
                                   const target = platforms?.find((pl) => pl.id === moveTargetPlatformId);
                                   const g = gardens?.find((gl) => gl.id === target?.garden_id);
-                                  const targetLabel = target ? `${g ? g.name + " | " : ""}Tầng ${target.floor} - ${target.name}` : "";
+                                  const targetLabel = target ? `${g ? g.name + " " : ""}Tầng ${target.floor} ${target.name}` : "";
                                   openConfirm(
                                     `Chuyển ${moveQty} tấm "${plant?.name ?? ""}" sang ${targetLabel}?`,
                                     () => doMoveBatch(loc.id)
@@ -627,7 +658,13 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                               </button>
                               <button
                                 className="flex-1 h-9 rounded-lg text-sm border border-gray-200 text-gray-600"
-                                onClick={() => { setMovingLocId(null); setMoveTargetPlatformId(""); setMovePlatformSearch(""); }}
+                                onClick={() => {
+                                  setMovingLocId(null);
+                                  setMoveTargetPlatformId("");
+                                  setMoveTargetGardenId("");
+                                  setMoveTargetFloor("");
+                                  setShowPlatformGridModal(false);
+                                }}
                               >
                                 Huỷ
                               </button>
@@ -642,7 +679,33 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
             </div>
           </div>
         </div>
+        
+      <PlatformGridModal
+        open={showPlatformGridModal && movingLocId !== null}
+        onClose={() => setShowPlatformGridModal(false)}
+        platforms={platforms}
+        locations={locations}
+        gardens={gardens}
+        moveTargetGardenId={moveTargetGardenId}
+        moveTargetFloor={moveTargetFloor}
+        excludePlatformId={platformId}
+        moveQty={moveQty}
+        maxMoveQty={movingLocId ? ((locations ?? []).find((l) => l.id === movingLocId)?.quantity ?? 0) : 0}
+        onMoveQtyChange={(value) => {
+          const maxQty = movingLocId ? ((locations ?? []).find((l) => l.id === movingLocId)?.quantity ?? 0) : 0;
+          handleMoveQtyChange(value, maxQty);
+        }}
+        neededQty={round2(Number(moveQty) || (movingLocId ? ((locations ?? []).find((l) => l.id === movingLocId)?.quantity ?? 0) : 0))}
+        moveTargetPlatformId={moveTargetPlatformId}
+        onSelectPlatform={(pid) => {
+          const selecting = moveTargetPlatformId !== pid;
+          setMoveTargetPlatformId(selecting ? pid : "");
+          if (selecting) setShowPlatformGridModal(false);
+        }}
+        zIndex={zIndex + 10}
+      />
       </div>
+
 
       {confirmModal}
     </>
