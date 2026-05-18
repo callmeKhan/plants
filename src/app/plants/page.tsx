@@ -287,6 +287,11 @@ function PlantsPageInner() {
       return batches.some((b) => b.status === filterStatus);
     });
   }
+  plantIds = plantIds.sort((a, b) => {
+    const nameA = plants?.find((p) => p.id === a)?.name ?? a;
+    const nameB = plants?.find((p) => p.id === b)?.name ?? b;
+    return nameA.localeCompare(nameB, "vi", { sensitivity: "base", numeric: true });
+  });
   const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort((a, b) => a - b);
   const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus;
 

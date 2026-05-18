@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // GET /api/plants
 export async function GET() {
-  const { data, error } = await supabase.from("plants").select("*");
+  const { data, error } = await supabase.from("plants").select("*").order('name', { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
