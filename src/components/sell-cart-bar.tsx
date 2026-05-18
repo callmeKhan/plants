@@ -15,7 +15,7 @@ export function SellCartBar() {
   const [expanded, setExpanded] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  const { locations, plants, platforms, gardens, refresh } = useData();
+  const { locations, plants, platforms, gardens, mutate, refresh } = useData();
 
   if (sellCart.length === 0) return null;
 
@@ -42,14 +42,16 @@ export function SellCartBar() {
         else tonghopAdd += sellAmt;
 
         if (sellAmt >= loc.quantity) {
-          await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
+          const delRes = await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
+          if (delRes.ok) mutate.removeLocation(locId);
         } else {
           const newQty = round2(loc.quantity - sellAmt);
-          await fetch(`/api/plant-locations?id=${locId}`, {
+          const res = await fetch(`/api/plant-locations?id=${locId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...loc, quantity: newQty }),
           });
+          if (res.ok) mutate.upsertLocation(await res.json());
         }
       }
 
@@ -57,18 +59,21 @@ export function SellCartBar() {
         const plant = plants.find((p) => p.id === plantId);
         if (!plant) continue;
         const newTotal = Math.max(0, round2(plant.total_quantity - soldQty));
-        await fetch(`/api/plants?id=${plantId}`, {
+        const res = await fetch(`/api/plants?id=${plantId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...plant, total_quantity: newTotal }),
         });
+        if (res.ok) mutate.upsertPlant(await res.json());
       }
 
       const totalSold = cattAdd + tonghopAdd;
       sellCartStore.clear();
       setExpanded(false);
       setToast({ text: `Thêm ${round2(totalSold)} tấm!`, type: "success" });
-      await refresh();
+    } catch {
+      await refresh("plants", "locations");
+      setToast({ text: "Lỗi kết nối", type: "error" });
     } finally {
       setProcessing(false);
     }

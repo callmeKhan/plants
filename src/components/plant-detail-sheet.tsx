@@ -109,7 +109,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
-  const { plants, locations, platforms, gardens, refresh } = useData();
+  const { plants, locations, platforms, gardens, mutate, refresh } = useData();
 
   const plant = plants.find((p) => p.id === plantId);
   const batches = locations.filter((l) => l.plant_id === plantId);
@@ -132,25 +132,32 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     if (!newName.trim() || !plant) return;
     const exists = plants?.some((p) => p.id !== plantId && p.name.trim().toLowerCase() === newName.trim().toLowerCase());
     if (exists) return;
-    await fetch(`/api/plants?id=${plantId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...plant, name: newName.trim() }),
-    });
-    setEditingName(false);
-    await refresh();
+    try {
+      const res = await fetch(`/api/plants?id=${plantId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...plant, name: newName.trim() }),
+      });
+      if (res.ok) { mutate.upsertPlant(await res.json()); setEditingName(false); }
+      else setToast({ text: "Lỗi cập nhật tên cây", type: "error" });
+    } catch {
+      setToast({ text: "Lỗi kết nối", type: "error" });
+    }
   }
 
   async function handleUpdateImage() {
     if (!newImageUrl.trim() || !plant) return;
-    await fetch(`/api/plants?id=${plantId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...plant, image_url: newImageUrl.trim() }),
-    });
-    setEditingImage(false);
-    setNewImageUrl("");
-    await refresh();
+    try {
+      const res = await fetch(`/api/plants?id=${plantId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...plant, image_url: newImageUrl.trim() }),
+      });
+      if (res.ok) { mutate.upsertPlant(await res.json()); setEditingImage(false); setNewImageUrl(""); }
+      else setToast({ text: "Lỗi cập nhật hình ảnh", type: "error" });
+    } catch {
+      setToast({ text: "Lỗi kết nối", type: "error" });
+    }
   }
 
   function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number; status?: string }) {
@@ -184,72 +191,100 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
 
       if (existingBatch) {
         // Merge: add current quantity to existing batch, then delete current
-        const mergedQty = round2(existingBatch.quantity + newQty);
-        await fetch(`/api/plant-locations?id=${existingBatch.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...existingBatch, quantity: mergedQty }),
-        });
-        await fetch(`/api/plant-locations?id=${batchId}`, { method: "DELETE" });
-
-        if (newQty !== oldQty) {
-          const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
-          await fetch(`/api/plants?id=${plantId}`, {
+        try {
+          const mergedQty = round2(existingBatch.quantity + newQty);
+          const mergeRes = await fetch(`/api/plant-locations?id=${existingBatch.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...plant, total_quantity: newTotal }),
+            body: JSON.stringify({ ...existingBatch, quantity: mergedQty }),
           });
+          const delRes = await fetch(`/api/plant-locations?id=${batchId}`, { method: "DELETE" });
+          if (mergeRes.ok) mutate.upsertLocation(await mergeRes.json());
+          if (delRes.ok) mutate.removeLocation(batchId);
+
+          if (newQty !== oldQty) {
+            const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
+            const plantRes = await fetch(`/api/plants?id=${plantId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...plant, total_quantity: newTotal }),
+            });
+            if (plantRes.ok) mutate.upsertPlant(await plantRes.json());
+          }
+        } catch {
+          await refresh("plants", "locations");
+          setToast({ text: "Lỗi kết nối", type: "error" });
+          setEditingBatchId(null);
+          return;
         }
 
         setEditingBatchId(null);
         setToast({ text: `Đã chuyển ${newQty} tấm sang sàn ${platformLabelFull(editPlatformId)} thành công! (Gộp vào đợt cũ)`, type: "success" });
-        await refresh();
         return;
       }
     }
 
     // No merge needed — standard update
-    const updates = {
-      quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId,
-      ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
-      ...(editStatus ? { status: editStatus } : { status: undefined }),
-    };
-    const batch = locations.find((l) => l.id === batchId);
-    await fetch(`/api/plant-locations?id=${batchId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...(batch ?? {}), ...updates, id: batchId }),
-    });
-    if (newQty !== oldQty) {
-      const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
-      await fetch(`/api/plants?id=${plantId}`, {
+    try {
+      const updates = {
+        quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId,
+        ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
+        ...(editStatus ? { status: editStatus } : { status: undefined }),
+      };
+      const batch = locations.find((l) => l.id === batchId);
+      const locRes = await fetch(`/api/plant-locations?id=${batchId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...plant, total_quantity: newTotal }),
+        body: JSON.stringify({ ...(batch ?? {}), ...updates, id: batchId }),
       });
+      if (locRes.ok) mutate.upsertLocation(await locRes.json());
+      if (newQty !== oldQty) {
+        const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
+        const plantRes = await fetch(`/api/plants?id=${plantId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...plant, total_quantity: newTotal }),
+        });
+        if (plantRes.ok) mutate.upsertPlant(await plantRes.json());
+      }
+    } catch {
+      await refresh("plants", "locations");
+      setToast({ text: "Lỗi kết nối", type: "error" });
     }
     setEditingBatchId(null);
-    await refresh();
   }
 
   async function doDeleteBatch(batchId: string, qty: number) {
     if (!plant) return;
-    await fetch(`/api/plant-locations?id=${batchId}`, { method: "DELETE" });
-    const newTotal = Math.max(0, round2(plant.total_quantity - qty));
-    await fetch(`/api/plants?id=${plantId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...plant, total_quantity: newTotal }),
-    });
-    await refresh();
+    try {
+      const delRes = await fetch(`/api/plant-locations?id=${batchId}`, { method: "DELETE" });
+      if (delRes.ok) mutate.removeLocation(batchId);
+      const newTotal = Math.max(0, round2(plant.total_quantity - qty));
+      const res = await fetch(`/api/plants?id=${plantId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...plant, total_quantity: newTotal }),
+      });
+      if (res.ok) mutate.upsertPlant(await res.json());
+    } catch {
+      await refresh("plants", "locations");
+      setToast({ text: "Lỗi kết nối", type: "error" });
+    }
   }
 
   async function doDeletePlant() {
-    for (const b of batches) {
-      await fetch(`/api/plant-locations?id=${b.id}`, { method: "DELETE" });
+    try {
+      for (const b of batches) {
+        const res = await fetch(`/api/plant-locations?id=${b.id}`, { method: "DELETE" });
+        if (res.ok) mutate.removeLocation(b.id);
+      }
+      const res = await fetch(`/api/plants?id=${plantId}`, { method: "DELETE" });
+      if (res.ok) mutate.removePlant(plantId);
+    } catch {
+      await refresh("plants", "locations");
+      setToast({ text: "Lỗi kết nối", type: "error" });
+      return;
     }
-    await fetch(`/api/plants?id=${plantId}`, { method: "DELETE" });
-    await refresh();
     onClose();
   }
 

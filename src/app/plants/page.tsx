@@ -138,7 +138,7 @@ function PlantsPageInner() {
   }, []);
 
 
-  const { plants, gardens, platforms, locations, refresh } = useData();
+  const { plants, gardens, platforms, locations, mutate } = useData();
 
   function floorsForGarden(gardenId: string) {
     return Array.from(new Set(
@@ -188,6 +188,7 @@ function PlantsPageInner() {
       });
       if (!res.ok) { setMsg({ text: "Lỗi tạo cây mới", type: "error" }); return; }
       plant = await res.json();
+      mutate.upsertPlant(plant!);
     } else {
       const newTotal = round2(plant.total_quantity + qty);
       const res = await fetch(`/api/plants?id=${plant.id}`, {
@@ -196,7 +197,8 @@ function PlantsPageInner() {
         body: JSON.stringify({ ...plant, total_quantity: newTotal }),
       });
       if (!res.ok) { setMsg({ text: "Lỗi cập nhật cây", type: "error" }); return; }
-      plant = { ...plant, total_quantity: newTotal };
+      plant = await res.json();
+      mutate.upsertPlant(plant!);
     }
 
     const platform = platforms?.find((p) => p.id === platformId);
@@ -220,11 +222,11 @@ function PlantsPageInner() {
       body: JSON.stringify(loc),
     });
     if (!locRes.ok) { setMsg({ text: "Lỗi lưu vị trí", type: "error" }); return; }
+    mutate.upsertLocation(await locRes.json());
 
     setName(""); setSelectedPlantId(null); setQuantity(""); setPrice("");
     setImageUrl(""); setPlantedDate(todayStr());
     setMsg({ text: "Đã lưu cây và vị trí thành công!", type: "success" });
-    await refresh();
   }
 
   function handleSubmit(e: React.FormEvent) {

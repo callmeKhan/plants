@@ -69,7 +69,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [moveTargetFloor, setMoveTargetFloor] = useState<number | "">("");
   const [showPlatformGridModal, setShowPlatformGridModal] = useState(false);
 
-  const { platforms, gardens, locations, plants, refresh } = useData();
+  const { platforms, gardens, locations, plants, mutate, refresh } = useData();
 
   const detailPlatform = platforms.find((p) => p.id === platformId);
 
@@ -101,13 +101,17 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       setToast({ text: "Tên sàn đã tồn tại ở tầng này!", type: "error" });
       return;
     }
-    await fetch(`/api/platforms?id=${platformId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...detailPlatform, name: newPlatformName.trim() }),
-    });
-    setEditingPlatformName(false);
-    await refresh();
+    try {
+      const res = await fetch(`/api/platforms?id=${platformId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...detailPlatform, name: newPlatformName.trim() }),
+      });
+      if (res.ok) { mutate.upsertPlatform(await res.json()); setEditingPlatformName(false); }
+      else setToast({ text: "Lỗi cập nhật tên sàn", type: "error" });
+    } catch {
+      setToast({ text: "Lỗi kết nối", type: "error" });
+    }
   }
 
   async function handleUpdateCapacity() {
@@ -121,13 +125,17 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       setToast({ text: `Sức chứa không được nhỏ hơn số cây hiện có (${used} tấm)`, type: "error" });
       return;
     }
-    await fetch(`/api/platforms?id=${platformId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...detailPlatform, capacity: val }),
-    });
-    setEditingCapacity(false);
-    await refresh();
+    try {
+      const res = await fetch(`/api/platforms?id=${platformId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...detailPlatform, capacity: val }),
+      });
+      if (res.ok) { mutate.upsertPlatform(await res.json()); setEditingCapacity(false); }
+      else setToast({ text: "Lỗi cập nhật sức chứa", type: "error" });
+    } catch {
+      setToast({ text: "Lỗi kết nối", type: "error" });
+    }
   }
 
   async function doMoveBatch(locId: string) {
@@ -164,48 +172,59 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       (l.status ?? null) === (loc.status ?? null)
     );
 
-    if (matchingBatch) {
-      const mergedQty = round2(matchingBatch.quantity + qty);
-      await fetch(`/api/plant-locations?id=${matchingBatch.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...matchingBatch, quantity: mergedQty }),
-      });
+    try {
+      if (matchingBatch) {
+        const mergedQty = round2(matchingBatch.quantity + qty);
+        const mergeRes = await fetch(`/api/plant-locations?id=${matchingBatch.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...matchingBatch, quantity: mergedQty }),
+        });
+        if (mergeRes.ok) mutate.upsertLocation(await mergeRes.json());
 
-      if (qty === loc.quantity) {
-        await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
+        if (qty === loc.quantity) {
+          const delRes = await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
+          if (delRes.ok) mutate.removeLocation(locId);
+        } else {
+          const newOrigQty = round2(loc.quantity - qty);
+          const origRes = await fetch(`/api/plant-locations?id=${locId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...loc, quantity: newOrigQty }),
+          });
+          if (origRes.ok) mutate.upsertLocation(await origRes.json());
+        }
+      } else if (qty === loc.quantity) {
+        const moveRes = await fetch(`/api/plant-locations?id=${locId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...loc, platform_id: moveTargetPlatformId }),
+        });
+        if (moveRes.ok) mutate.upsertLocation(await moveRes.json());
       } else {
         const newOrigQty = round2(loc.quantity - qty);
-        await fetch(`/api/plant-locations?id=${locId}`, {
+        const origRes = await fetch(`/api/plant-locations?id=${locId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...loc, quantity: newOrigQty }),
         });
+        if (origRes.ok) mutate.upsertLocation(await origRes.json());
+        const newLoc = {
+          id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
+          quantity: qty, pot_size: loc.pot_size, planted_date: loc.planted_date,
+          ...(loc.price != null ? { price: loc.price } : {}),
+          ...(loc.status ? { status: loc.status } : {}),
+        };
+        const newRes = await fetch("/api/plant-locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newLoc),
+        });
+        if (newRes.ok) mutate.upsertLocation(await newRes.json());
       }
-    } else if (qty === loc.quantity) {
-      await fetch(`/api/plant-locations?id=${locId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...loc, platform_id: moveTargetPlatformId }),
-      });
-    } else {
-      const newOrigQty = round2(loc.quantity - qty);
-      await fetch(`/api/plant-locations?id=${locId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...loc, quantity: newOrigQty }),
-      });
-      const newLoc = {
-        id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
-        quantity: qty, pot_size: loc.pot_size, planted_date: loc.planted_date,
-        ...(loc.price != null ? { price: loc.price } : {}),
-        ...(loc.status ? { status: loc.status } : {}),
-      };
-      await fetch("/api/plant-locations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newLoc),
-      });
+    } catch {
+      await refresh("locations");
+      setToast({ text: "Lỗi kết nối", type: "error" });
     }
 
     setMovingLocId(null);
@@ -225,24 +244,30 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       dst: { gardenName: dstGarden?.name ?? "", floor: targetPlatform.floor, platformName: targetPlatform.name },
     };
     setToast({ text: `Đã chuyển ${moveRecord.qty} cây từ ${srcLabel} → ${dstLabel}${mergeNote}`, type: "success" });
-    await refresh();
   }
 
   async function doDeleteBatch(locId: string) {
     const loc = locations.find((l) => l.id === locId);
     if (!loc) return;
-    await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
-    const plant = plants.find((p) => p.id === loc.plant_id);
-    if (plant) {
-      const newTotal = Math.max(0, round2(plant.total_quantity - loc.quantity));
-      await fetch(`/api/plants?id=${loc.plant_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...plant, total_quantity: newTotal }),
-      });
+    try {
+      const delRes = await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
+      if (delRes.ok) mutate.removeLocation(locId);
+      const plant = plants.find((p) => p.id === loc.plant_id);
+      if (plant) {
+        const newTotal = Math.max(0, round2(plant.total_quantity - loc.quantity));
+        const res = await fetch(`/api/plants?id=${loc.plant_id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...plant, total_quantity: newTotal }),
+        });
+        if (res.ok) mutate.upsertPlant(await res.json());
+      }
+    } catch {
+      await refresh("plants", "locations");
+      setToast({ text: "Lỗi kết nối", type: "error" });
+      return;
     }
     setToast({ text: "Đã xoá đợt khỏi sàn", type: "success" });
-    await refresh();
   }
 
   const cartQtyByLoc = (locId: string) =>

@@ -58,7 +58,7 @@ function PlatformsPageInner() {
     setExpandedFloors(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const { gardens, platforms, locations, refresh } = useData();
+  const { gardens, platforms, locations, refresh, mutate } = useData();
 
   async function handleAddGarden(e: React.FormEvent) {
     e.preventDefault();
@@ -70,10 +70,10 @@ function PlatformsPageInner() {
       body: JSON.stringify(garden),
     });
     if (!res.ok) { setToast({ text: "Lỗi thêm vườn", type: "error" }); return; }
+    mutate.upsertGarden(await res.json());
     setGardenName("");
     setToast({ text: `Đã thêm vườn: ${garden.name}`, type: "success" });
     setTimeout(() => setToast(null), 3000);
-    await refresh();
   }
 
   async function doDeleteGarden(id: string) {
@@ -95,7 +95,7 @@ function PlatformsPageInner() {
       }
     }
     setToast({ text: "Đã xoá vườn", type: "success" });
-    await refresh();
+    await refresh("gardens", "platforms", "plants", "locations");
   }
 
   function handleDeleteGarden(id: string, gardenName: string) {
@@ -132,10 +132,10 @@ function PlatformsPageInner() {
       body: JSON.stringify(platform),
     });
     if (!res.ok) { setToast({ text: "Lỗi thêm sàn", type: "error" }); return; }
+    mutate.upsertPlatform(await res.json());
     setFloor(""); setName(""); setCapacity("");
     setToast({ text: `Đã thêm sàn: ${platform.name}`, type: "success" });
     setTimeout(() => setToast(null), 3000);
-    await refresh();
   }
 
   async function doDeletePlatform(id: string) {
@@ -152,7 +152,7 @@ function PlatformsPageInner() {
       }
     }
     setToast({ text: "Đã xoá sàn", type: "success" });
-    await refresh();
+    await refresh("platforms", "plants", "locations");
   }
 
   function handleDelete(id: string, platformName: string) {
