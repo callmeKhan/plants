@@ -7,9 +7,8 @@ import { round2 } from "@/lib/number";
 import { Badge } from "@/components/ui/badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { MonthlySalesChart } from "@/components/monthly-sales-chart";
+import { PlantImage } from "@/components/plant-image";
 import { Leaf, Package, Trees, ChevronRight } from "lucide-react";
-
-const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 
 /** Map fill percentage → GitHub-style green color */
 function fillColor(pct: number): string {
@@ -363,16 +362,8 @@ export default function Dashboard() {
                     <span className="text-sm font-bold text-gray-300 w-5 text-center shrink-0">
                       {i + 1}
                     </span>
-                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-emerald-50 shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.image_url || PLACEHOLDER_IMAGE}
-                        alt={p.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE;
-                        }}
-                      />
+                    <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-emerald-50 shrink-0">
+                      <PlantImage src={p.image_url} alt={p.name} sizes="32px" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-900 text-sm truncate">
@@ -495,17 +486,8 @@ export default function Dashboard() {
                           className="flex items-center gap-2 text-[11px] cursor-pointer hover:bg-emerald-50 rounded px-0.5 -mx-0.5 transition-colors"
                           onClick={() => { setDetailPlantId(loc.plant_id); setTooltipId(null); setHighlightBatchId(loc.id); }}
                         >
-                          <div className="w-5 h-5 rounded overflow-hidden bg-emerald-50 shrink-0">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={plant?.image_url || PLACEHOLDER_IMAGE}
-                              alt=""
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src =
-                                  PLACEHOLDER_IMAGE;
-                              }}
-                            />
+                          <div className="relative w-5 h-5 rounded overflow-hidden bg-emerald-50 shrink-0">
+                            <PlantImage src={plant?.image_url} alt="" sizes="20px" />
                           </div>
                           <span className="text-gray-700 truncate flex-1">
                             {plant?.name ?? "?"}

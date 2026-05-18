@@ -14,8 +14,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { PlatformGridModal } from "@/components/platform-grid-modal";
-
-const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
+import { PlantImage } from "@/components/plant-image";
 
 function fmtDate(d: string) {
   if (!d) return "";
@@ -465,14 +464,8 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                           </div>
                         )}
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={plant?.image_url || PLACEHOLDER_IMAGE}
-                              alt={plant?.name ?? ""}
-                              className="w-full h-full object-cover"
-                              onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
-                            />
+                          <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
+                            <PlantImage src={plant?.image_url} alt={plant?.name ?? ""} sizes="40px" />
                           </div>
                           <div
                             className="flex-1 min-w-0 cursor-pointer"

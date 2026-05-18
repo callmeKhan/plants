@@ -5,14 +5,13 @@ import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PlantImage } from "@/components/plant-image";
 
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search, ImageIcon,
   DollarSign,
 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-modal";
-
-const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 
 function fmtDate(d: string) {
   if (!d) return "";
@@ -357,13 +356,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
           <div className="overflow-y-auto px-5 pb-6 space-y-4 pt-4">
 
             {/* Image */}
-            <div className="rounded-2xl overflow-hidden bg-gray-50 aspect-square w-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={plant.image_url || PLACEHOLDER_IMAGE}
+            <div className="relative rounded-2xl overflow-hidden bg-gray-50 aspect-square w-full">
+              <PlantImage
+                src={plant.image_url}
                 alt={plant.name}
-                className="object-cover w-full h-full"
-                onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
+                sizes="(max-width: 640px) calc(100vw - 40px), 472px"
               />
             </div>
 

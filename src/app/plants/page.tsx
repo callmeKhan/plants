@@ -23,8 +23,7 @@ import { useConfirm } from "@/components/ui/confirm-modal";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { PlatformDetailSheet } from "@/components/platform-detail-sheet";
 import { Collapse } from "@/components/ui/collapse";
-
-const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
+import { PlantImage } from "@/components/plant-image";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -680,14 +679,8 @@ function PlantsPageInner() {
                 >
                   <Card className="hover:shadow-md hover:border-emerald-200 transition-all duration-200 active:scale-[0.99]">
                     <CardContent className="py-3 px-4 flex items-start gap-3">
-                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-emerald-50 shrink-0 mt-0.5">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={plant?.image_url || PLACEHOLDER_IMAGE}
-                          alt={plant?.name ?? ""}
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_IMAGE; }}
-                        />
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-emerald-50 shrink-0 mt-0.5">
+                        <PlantImage src={plant?.image_url} alt={plant?.name ?? ""} sizes="48px" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1.5 justify-between">
