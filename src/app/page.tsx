@@ -1,7 +1,6 @@
 "use client";
 
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { useData } from "@/lib/data";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { round2 } from "@/lib/number";
@@ -30,10 +29,7 @@ function fillLabel(pct: number): string {
 }
 
 export default function Dashboard() {
-  const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
-  const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
-  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
-  const plants = useLiveQuery(() => db.plants.toArray(), [], []);
+  const { gardens, platforms, locations, plants } = useData();
 
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);

@@ -1,18 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
-import { v4 as uuidv4 } from "uuid";
-import { processQueue } from "@/lib/sync";
+import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
-import { currentTimeMs } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search, ImageIcon,
-  DollarSign, ChevronRight,
+  DollarSign,
 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-modal";
 
@@ -113,15 +109,10 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
-  const plant = useLiveQuery(() => db.plants.get(plantId), [plantId]);
-  const plants = useLiveQuery(() => db.plants.toArray(), [], []);
-  const batches = useLiveQuery(
-    () => db.plantLocations.where("plant_id").equals(plantId).toArray(),
-    [plantId], []
-  );
-  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
-  const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
-  const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
+  const { plants, locations, platforms, gardens, refresh } = useData();
+
+  const plant = plants.find((p) => p.id === plantId);
+  const batches = locations.filter((l) => l.plant_id === plantId);
 
   if (!plant) return null;
 
@@ -140,30 +131,26 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   async function handleUpdateName() {
     if (!newName.trim() || !plant) return;
     const exists = plants?.some((p) => p.id !== plantId && p.name.trim().toLowerCase() === newName.trim().toLowerCase());
-    if (exists) return; // tên đã tồn tại — caller có thể show toast nếu muốn
-    const updated = { ...plant, name: newName.trim() };
-    await db.plants.update(plantId, { name: newName.trim() });
-    await db.syncQueue.add({
-      id: uuidv4(), type: "UPDATE", entity: "plant",
-      payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    if (exists) return;
+    await fetch(`/api/plants?id=${plantId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...plant, name: newName.trim() }),
     });
     setEditingName(false);
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function handleUpdateImage() {
     if (!newImageUrl.trim() || !plant) return;
-    const updated = { ...plant, image_url: newImageUrl.trim() };
-    await db.plants.update(plantId, { image_url: newImageUrl.trim() });
-    await db.syncQueue.add({
-      id: uuidv4(), type: "UPDATE", entity: "plant",
-      payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    await fetch(`/api/plants?id=${plantId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...plant, image_url: newImageUrl.trim() }),
     });
     setEditingImage(false);
     setNewImageUrl("");
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number; status?: string }) {
@@ -181,14 +168,12 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     const newQty = Number(editQty);
     if (!newQty || !editPlatformId || !plant) return;
 
-    // If destination has a matching batch (same plant_id, platform_id, pot_size, planted_date, price, status),
-    // merge quantities and delete the current batch
-    const currentBatch = (batches ?? []).find((b) => b.id === batchId);
+    const currentBatch = batches.find((b) => b.id === batchId);
     if (currentBatch) {
       const targetPrice = editPrice ? Number(editPrice) : undefined;
       const targetStatus = editStatus || undefined;
 
-      const existingBatch = (batches ?? []).find((b) =>
+      const existingBatch = batches.find((b) =>
         b.id !== batchId &&
         b.platform_id === editPlatformId &&
         b.pot_size === editPotSize &&
@@ -200,34 +185,25 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
       if (existingBatch) {
         // Merge: add current quantity to existing batch, then delete current
         const mergedQty = round2(existingBatch.quantity + newQty);
-        await db.plantLocations.update(existingBatch.id, { quantity: mergedQty });
-        await db.syncQueue.add({
-          id: uuidv4(), type: "UPDATE", entity: "plant_location",
-          payload: { ...existingBatch, quantity: mergedQty } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: currentTimeMs(),
+        await fetch(`/api/plant-locations?id=${existingBatch.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...existingBatch, quantity: mergedQty }),
         });
+        await fetch(`/api/plant-locations?id=${batchId}`, { method: "DELETE" });
 
-        await db.plantLocations.delete(batchId);
-        await db.syncQueue.add({
-          id: uuidv4(), type: "DELETE", entity: "plant_location",
-          payload: { id: batchId } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: currentTimeMs(),
-        });
-
-        // Update plant total_quantity if quantity value changed
         if (newQty !== oldQty) {
           const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
-          await db.plants.update(plantId, { total_quantity: newTotal });
-          await db.syncQueue.add({
-            id: uuidv4(), type: "UPDATE", entity: "plant",
-            payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-            status: "pending", retry_count: 0, created_at: currentTimeMs(),
+          await fetch(`/api/plants?id=${plantId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...plant, total_quantity: newTotal }),
           });
         }
 
         setEditingBatchId(null);
-        processQueue().catch(console.error);
         setToast({ text: `Đã chuyển ${newQty} tấm sang sàn ${platformLabelFull(editPlatformId)} thành công! (Gộp vào đợt cũ)`, type: "success" });
+        await refresh();
         return;
       }
     }
@@ -238,64 +214,46 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
       ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
       ...(editStatus ? { status: editStatus } : { status: undefined }),
     };
-    await db.plantLocations.update(batchId, updates);
-    const batch = (locations ?? []).find((l) => l.id === batchId);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "UPDATE", entity: "plant_location",
-      payload: { ...(batch ?? {}), ...updates, id: batchId } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    const batch = locations.find((l) => l.id === batchId);
+    await fetch(`/api/plant-locations?id=${batchId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...(batch ?? {}), ...updates, id: batchId }),
     });
     if (newQty !== oldQty) {
       const newTotal = Math.max(0, round2(plant.total_quantity - oldQty + newQty));
-      await db.plants.update(plantId, { total_quantity: newTotal });
-      await db.syncQueue.add({
-        id: uuidv4(), type: "UPDATE", entity: "plant",
-        payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      await fetch(`/api/plants?id=${plantId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...plant, total_quantity: newTotal }),
       });
     }
     setEditingBatchId(null);
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function doDeleteBatch(batchId: string, qty: number) {
     if (!plant) return;
-    await db.plantLocations.delete(batchId);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "DELETE", entity: "plant_location",
-      payload: { id: batchId } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
-    });
+    await fetch(`/api/plant-locations?id=${batchId}`, { method: "DELETE" });
     const newTotal = Math.max(0, round2(plant.total_quantity - qty));
-    await db.plants.update(plantId, { total_quantity: newTotal });
-    await db.syncQueue.add({
-      id: uuidv4(), type: "UPDATE", entity: "plant",
-      payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    await fetch(`/api/plants?id=${plantId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...plant, total_quantity: newTotal }),
     });
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function doDeletePlant() {
-    for (const b of batches ?? []) {
-      await db.plantLocations.delete(b.id);
-      await db.syncQueue.add({
-        id: uuidv4(), type: "DELETE", entity: "plant_location",
-        payload: { id: b.id } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
-      });
+    for (const b of batches) {
+      await fetch(`/api/plant-locations?id=${b.id}`, { method: "DELETE" });
     }
-    await db.plants.delete(plantId);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "DELETE", entity: "plant",
-      payload: { id: plantId } as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
-    });
-    processQueue().catch(console.error);
+    await fetch(`/api/plants?id=${plantId}`, { method: "DELETE" });
+    await refresh();
     onClose();
   }
 
-  const usedSizes = (locations ?? []).map((l) => l.pot_size);
+  const usedSizes = locations.map((l) => l.pot_size);
 
   return (
     <>
@@ -407,9 +365,9 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
 
             {/* Batches */}
             <div>
-              <h3 className="font-semibold text-gray-800 mb-2 text-sm">Các đợt trồng ({(batches ?? []).length})</h3>
+              <h3 className="font-semibold text-gray-800 mb-2 text-sm">Các đợt trồng ({batches.length})</h3>
               <div className="space-y-2">
-                {(batches ?? []).map((b) => (
+                {batches.map((b) => (
                   <div
                     key={b.id}
                     className={`rounded-xl px-3 py-2.5 space-y-2 transition-all duration-500 ${b.id === highlightBatchId
@@ -485,12 +443,10 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                                 .filter((p) => {
                                   if (!editPlatformSearch.trim()) return true;
                                   const q = editPlatformSearch.toLowerCase();
-                                  const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                                  const free = p.capacity - (locations.filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
                                   const g = gardens?.find((g) => g.id === p.garden_id)?.name ?? "";
                                   return `${g} tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
                                 })
-                                // format label Vườn A | Tầng 1 - P9 (còn 2)
-                                // order by gardern, then floor, then name
                                 .sort((a, b) => {
                                   const gA = gardens?.find((g) => g.id === a.garden_id)?.name ?? "";
                                   const gB = gardens?.find((g) => g.id === b.garden_id)?.name ?? "";
@@ -499,7 +455,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                                   return a.name.localeCompare(b.name, undefined, { numeric: true });
                                 })
                                 .map((p) => {
-                                  const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                                  const free = p.capacity - (locations.filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
                                   const g = gardens?.find((g) => g.id === p.garden_id)?.name;
                                   const label = `${g ? g + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${round2(free)})`;
                                   return (
@@ -607,7 +563,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
               className="w-full h-11 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
               style={{ backgroundColor: "#dc2626" }}
               onClick={() => openConfirm(
-                `Xoá toàn bộ cây "${plant.name}" và tất cả ${(batches ?? []).length} đợt trồng?`,
+                `Xoá toàn bộ cây "${plant.name}" và tất cả ${batches.length} đợt trồng?`,
                 doDeletePlant
               )}
             >

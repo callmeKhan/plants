@@ -3,13 +3,10 @@
 import { useState, useEffect, Suspense } from "react";
 import { useDetailStack } from "@/lib/use-detail-stack";
 import { useSearchParams } from "next/navigation";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { useData } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
-import { processQueue } from "@/lib/sync";
 import { Input } from "@/components/ui/input";
 import { round2 } from "@/lib/number";
-import { currentTimeMs } from "@/lib/time";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,66 +58,49 @@ function PlatformsPageInner() {
     setExpandedFloors(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
-  const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
-  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
+  const { gardens, platforms, locations, refresh } = useData();
 
   async function handleAddGarden(e: React.FormEvent) {
     e.preventDefault();
     if (!gardenName) { setToast({ text: "Tên vườn là bắt buộc", type: "error" }); return; }
     const garden = { id: uuidv4(), name: gardenName };
-    await db.gardens.add(garden);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "CREATE", entity: "garden",
-      payload: garden, status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    const res = await fetch("/api/gardens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(garden),
     });
+    if (!res.ok) { setToast({ text: "Lỗi thêm vườn", type: "error" }); return; }
     setGardenName("");
     setToast({ text: `Đã thêm vườn: ${garden.name}`, type: "success" });
     setTimeout(() => setToast(null), 3000);
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function doDeleteGarden(id: string) {
-    const pts = (platforms ?? []).filter((p) => p.garden_id === id);
+    const pts = platforms.filter((p) => p.garden_id === id);
     const deletedPlantIds = new Set<string>();
     for (const p of pts) {
-      const locs = await db.plantLocations.where("platform_id").equals(p.id).toArray();
+      const locs = locations.filter((l) => l.platform_id === p.id);
       for (const loc of locs) {
         deletedPlantIds.add(loc.plant_id);
-        await db.plantLocations.delete(loc.id);
-        await db.syncQueue.add({
-          id: uuidv4(), type: "DELETE", entity: "plant_location",
-          payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-        });
+        await fetch(`/api/plant-locations?id=${loc.id}`, { method: "DELETE" });
       }
-      await db.platforms.delete(p.id);
-      await db.syncQueue.add({
-        id: uuidv4(), type: "DELETE", entity: "platform",
-        payload: { id: p.id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-      });
+      await fetch(`/api/platforms?id=${p.id}`, { method: "DELETE" });
     }
-    await db.gardens.delete(id);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "DELETE", entity: "garden",
-      payload: { id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-    });
+    await fetch(`/api/gardens?id=${id}`, { method: "DELETE" });
     for (const plantId of deletedPlantIds) {
-      const remaining = await db.plantLocations.where("plant_id").equals(plantId).count();
+      const remaining = locations.filter((l) => l.plant_id === plantId && !pts.some((p) => p.id === l.platform_id)).length;
       if (remaining === 0) {
-        await db.plants.delete(plantId);
-        await db.syncQueue.add({
-          id: uuidv4(), type: "DELETE", entity: "plant",
-          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-        });
+        await fetch(`/api/plants?id=${plantId}`, { method: "DELETE" });
       }
     }
     setToast({ text: "Đã xoá vườn", type: "success" });
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   function handleDeleteGarden(id: string, gardenName: string) {
-    const gardenPlatformIds = (platforms ?? []).filter((p) => p.garden_id === id).map((p) => p.id);
-    const plantCount = (locations ?? [])
+    const gardenPlatformIds = platforms.filter((p) => p.garden_id === id).map((p) => p.id);
+    const plantCount = locations
       .filter((l) => gardenPlatformIds.includes(l.platform_id))
       .reduce((s, l) => s + l.quantity, 0);
     openConfirm(
@@ -146,48 +126,37 @@ function PlatformsPageInner() {
       id: uuidv4(), garden_id: gardenId, floor: Number(floor),
       name, capacity: Number(capacity),
     };
-    await db.platforms.add(platform);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "CREATE", entity: "platform",
-      payload: platform, status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    const res = await fetch("/api/platforms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(platform),
     });
+    if (!res.ok) { setToast({ text: "Lỗi thêm sàn", type: "error" }); return; }
     setFloor(""); setName(""); setCapacity("");
     setToast({ text: `Đã thêm sàn: ${platform.name}`, type: "success" });
     setTimeout(() => setToast(null), 3000);
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function doDeletePlatform(id: string) {
-    const locs = await db.plantLocations.where("platform_id").equals(id).toArray();
+    const locs = locations.filter((l) => l.platform_id === id);
     const deletedPlantIds = new Set(locs.map((l) => l.plant_id));
     for (const loc of locs) {
-      await db.plantLocations.delete(loc.id);
-      await db.syncQueue.add({
-        id: uuidv4(), type: "DELETE", entity: "plant_location",
-        payload: { id: loc.id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-      });
+      await fetch(`/api/plant-locations?id=${loc.id}`, { method: "DELETE" });
     }
-    await db.platforms.delete(id);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "DELETE", entity: "platform",
-      payload: { id }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-    });
+    await fetch(`/api/platforms?id=${id}`, { method: "DELETE" });
     for (const plantId of deletedPlantIds) {
-      const remaining = await db.plantLocations.where("plant_id").equals(plantId).count();
+      const remaining = locations.filter((l) => l.plant_id === plantId && l.platform_id !== id).length;
       if (remaining === 0) {
-        await db.plants.delete(plantId);
-        await db.syncQueue.add({
-          id: uuidv4(), type: "DELETE", entity: "plant",
-          payload: { id: plantId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-        });
+        await fetch(`/api/plants?id=${plantId}`, { method: "DELETE" });
       }
     }
     setToast({ text: "Đã xoá sàn", type: "success" });
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   function handleDelete(id: string, platformName: string) {
-    const plantCount = (locations ?? [])
+    const plantCount = locations
       .filter((l) => l.platform_id === id)
       .reduce((s, l) => s + l.quantity, 0);
     openConfirm(
@@ -236,11 +205,11 @@ function PlatformsPageInner() {
               </button>
             </form>
 
-            {(gardens?.length ?? 0) > 0 && (
+            {gardens.length > 0 && (
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {gardens?.map((g) => {
-                  const gardenPlatformIds = (platforms ?? []).filter((p) => p.garden_id === g.id).map((p) => p.id);
-                  const plantCount = round2((locations ?? [])
+                  const gardenPlatformIds = platforms.filter((p) => p.garden_id === g.id).map((p) => p.id);
+                  const plantCount = round2(locations
                     .filter((l) => gardenPlatformIds.includes(l.platform_id))
                     .reduce((s, l) => s + l.quantity, 0));
                   const platformCount = gardenPlatformIds.length;
@@ -340,14 +309,14 @@ function PlatformsPageInner() {
           </Collapse>
 
           {/* Platform list by garden */}
-          {(platforms?.length ?? 0) > 0 && (
+          {platforms.length > 0 && (
             <div className="space-y-4 mt-3">
               <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                 Danh sách sàn
                 <Badge variant="secondary">{platforms?.length ?? 0}</Badge>
               </p>
               {/* garden sort by name */}
-              {gardens?.sort((a, b) => a.name.localeCompare(b.name)).map((g) => {
+              {[...gardens].sort((a, b) => a.name.localeCompare(b.name)).map((g) => {
                 const gardenPlatforms = platforms?.filter((p) => p.garden_id === g.id) || [];
                 if (gardenPlatforms.length === 0) return null;
                 const floors = [...new Set(gardenPlatforms.map((p) => p.floor))].sort((a, b) => a - b);
@@ -387,7 +356,7 @@ function PlatformsPageInner() {
                                     {col.items
                                       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
                                       .map((p) => {
-                                        const used = (locations ?? [])
+                                        const used = locations
                                           .filter((l) => l.platform_id === p.id)
                                           .reduce((s, l) => s + l.quantity, 0);
                                         const free = round2(p.capacity - used);

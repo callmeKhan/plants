@@ -1,13 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { v4 as uuidv4 } from "uuid";
 import { ShoppingCart, X, ChevronDown, ChevronUp } from "lucide-react";
-import { db } from "@/lib/db";
+import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
-import { processQueue } from "@/lib/sync";
-import { currentTimeMs } from "@/lib/time";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
@@ -19,10 +15,7 @@ export function SellCartBar() {
   const [expanded, setExpanded] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
-  const plants = useLiveQuery(() => db.plants.toArray(), [], []);
-  const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
-  const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
+  const { locations, plants, platforms, gardens, refresh } = useData();
 
   if (sellCart.length === 0) return null;
 
@@ -30,7 +23,6 @@ export function SellCartBar() {
     if (sellCart.length === 0 || processing) return;
     setProcessing(true);
     try {
-      const month = new Date().toISOString().slice(0, 7);
       let cattAdd = 0;
       let tonghopAdd = 0;
 
@@ -40,7 +32,7 @@ export function SellCartBar() {
       const plantQtyAgg = new Map<string, number>();
 
       for (const [locId, qty] of byLoc) {
-        const loc = (locations ?? []).find((l) => l.id === locId);
+        const loc = locations.find((l) => l.id === locId);
         if (!loc) continue;
         const plant = plants?.find((p) => p.id === loc.plant_id);
         const sellAmt = Math.min(qty, loc.quantity);
@@ -50,31 +42,25 @@ export function SellCartBar() {
         else tonghopAdd += sellAmt;
 
         if (sellAmt >= loc.quantity) {
-          await db.plantLocations.delete(locId);
-          await db.syncQueue.add({
-            id: uuidv4(), type: "DELETE", entity: "plant_location",
-            payload: { id: locId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-          });
+          await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
         } else {
           const newQty = round2(loc.quantity - sellAmt);
-          await db.plantLocations.update(locId, { quantity: newQty });
-          await db.syncQueue.add({
-            id: uuidv4(), type: "UPDATE", entity: "plant_location",
-            payload: { ...loc, quantity: newQty } as Record<string, unknown>,
-            status: "pending", retry_count: 0, created_at: currentTimeMs(),
+          await fetch(`/api/plant-locations?id=${locId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...loc, quantity: newQty }),
           });
         }
       }
 
       for (const [plantId, soldQty] of plantQtyAgg) {
-        const plant = await db.plants.get(plantId);
+        const plant = plants.find((p) => p.id === plantId);
         if (!plant) continue;
         const newTotal = Math.max(0, round2(plant.total_quantity - soldQty));
-        await db.plants.update(plantId, { total_quantity: newTotal });
-        await db.syncQueue.add({
-          id: uuidv4(), type: "UPDATE", entity: "plant",
-          payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: currentTimeMs(),
+        await fetch(`/api/plants?id=${plantId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...plant, total_quantity: newTotal }),
         });
       }
 
@@ -82,7 +68,7 @@ export function SellCartBar() {
       sellCartStore.clear();
       setExpanded(false);
       setToast({ text: `Thêm ${round2(totalSold)} tấm!`, type: "success" });
-      processQueue().catch(console.error);
+      await refresh();
     } finally {
       setProcessing(false);
     }
@@ -101,7 +87,7 @@ export function SellCartBar() {
         {expanded && (
           <div className="px-4 pt-3 pb-1 max-h-56 overflow-y-auto space-y-1 border-b border-gray-50">
             {sellCart.map((c, idx) => {
-              const loc = (locations ?? []).find((l) => l.id === c.locId);
+              const loc = locations.find((l) => l.id === c.locId);
               const plant = loc ? plants?.find((p) => p.id === loc.plant_id) : null;
               const pf = loc ? platforms?.find((p) => p.id === loc.platform_id) : null;
               const g = pf ? gardens?.find((gl) => gl.id === pf.garden_id) : null;
@@ -152,15 +138,15 @@ export function SellCartBar() {
             onClick={() => {
               openConfirm(
                 `Xác nhận bán ${totalQty} tấm (${sellCart.length} đợt)?
-                
+
                 ${sellCart.map((c) => {
-                  const loc = (locations ?? []).find((l) => l.id === c.locId);
+                  const loc = locations.find((l) => l.id === c.locId);
                   const plant = loc ? plants?.find((p) => p.id === loc.plant_id) : null;
                   const pf = loc ? platforms?.find((p) => p.id === loc.platform_id) : null;
                   const g = pf ? gardens?.find((gl) => gl.id === pf.garden_id) : null;
                   const locLabel = pf ? `${g ? g.name + " · " : ""}T${pf.floor}-${pf.name}` : "";
                   return ` ─ ${plant?.name ?? "?"} (${locLabel}) - ${c.qty} tấm`;
-                }).join("\n")} 
+                }).join("\n")}
                 `,
                 () => processSell()
               );

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { startSyncWorker } from "@/lib/sync";
 import { useLoading } from "@/components/LoadingProvider";
 
 // Symbol used to mark our patched fetch so we never double-wrap
@@ -21,8 +20,7 @@ export default function SyncProvider({
   useEffect(() => {
     // Guard: do not double-wrap (React StrictMode mounts effects twice in dev)
     if ((window.fetch as typeof fetch & { [PATCHED]?: boolean })[PATCHED]) {
-      const cleanup = startSyncWorker();
-      return cleanup;
+      return;
     }
 
     const original = window.fetch;
@@ -45,10 +43,8 @@ export default function SyncProvider({
       navigator.serviceWorker.register(`/sw.js?v=${buildTime}`).catch(console.error);
     }
 
-    const cleanup = startSyncWorker();
     return () => {
       window.fetch = original;
-      cleanup();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

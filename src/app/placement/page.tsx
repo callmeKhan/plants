@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
-import { currentTimeMs } from "@/lib/time";
 import { v4 as uuidv4 } from "uuid";
 
 export default function PlacementPage() {
@@ -18,9 +16,7 @@ export default function PlacementPage() {
 
   const [msg, setMsg] = useState("");
 
-  const plants = useLiveQuery(() => db.plants.toArray(), [], []);
-  const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
-  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
+  const { plants, platforms, locations, refresh } = useData();
 
   // Derive unique floors and filtered platforms
   const floors = [...new Set(platforms?.map((p) => p.floor))].sort((a, b) => a - b);
@@ -39,13 +35,14 @@ export default function PlacementPage() {
     const qty = round2(Number(quantity));
 
     // Validate inventory constraint (client-side)
-    const plant = await db.plants.get(plantId);
+    const plant = plants.find((p) => p.id === plantId);
     if (!plant) {
       setMsg("❌ Không tìm thấy cây");
       return;
     }
 
-    const usedByPlant = (await db.plantLocations.where("plant_id").equals(plantId).toArray())
+    const usedByPlant = locations
+      .filter((l) => l.plant_id === plantId)
       .reduce((sum, l) => sum + l.quantity, 0);
 
     if (usedByPlant + qty > plant.total_quantity) {
@@ -56,13 +53,14 @@ export default function PlacementPage() {
     }
 
     // Validate capacity constraint
-    const platform = await db.platforms.get(platformId);
+    const platform = platforms.find((p) => p.id === platformId);
     if (!platform) {
       setMsg("❌ Không tìm thấy platform");
       return;
     }
 
-    const usedCapacity = (await db.plantLocations.where("platform_id").equals(platformId).toArray())
+    const usedCapacity = locations
+      .filter((l) => l.platform_id === platformId)
       .reduce((sum, l) => sum + l.quantity, 0);
 
     if (usedCapacity + qty > platform.capacity) {
@@ -73,35 +71,23 @@ export default function PlacementPage() {
     }
 
     // Upsert: if same plant+platform exists, add quantity instead of new record
-    const existing = (await db.plantLocations
-      .where("plant_id").equals(plantId)
-      .toArray())
+    const existing = locations
+      .filter((l) => l.plant_id === plantId)
       .find((l) => l.platform_id === platformId);
 
     if (existing) {
       const newQty = round2(existing.quantity + qty);
-      await db.plantLocations.update(existing.id, { quantity: newQty });
-      await db.syncQueue.add({
-        id: uuidv4(),
-        type: "UPDATE",
-        entity: "plant_location",
-        payload: { ...existing, quantity: newQty },
-        status: "pending",
-        retry_count: 0,
-        created_at: currentTimeMs(),
+      await fetch(`/api/plant-locations?id=${existing.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...existing, quantity: newQty }),
       });
     } else {
-      const id = uuidv4();
-      const loc = { id, plant_id: plantId, platform_id: platformId, quantity: qty, pot_size: 0, planted_date: "" };
-      await db.plantLocations.add(loc);
-      await db.syncQueue.add({
-        id: uuidv4(),
-        type: "CREATE",
-        entity: "plant_location",
-        payload: loc,
-        status: "pending",
-        retry_count: 0,
-        created_at: currentTimeMs(),
+      const loc = { id: uuidv4(), plant_id: plantId, platform_id: platformId, quantity: qty, pot_size: 0, planted_date: "" };
+      await fetch("/api/plant-locations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(loc),
       });
     }
 
@@ -109,6 +95,7 @@ export default function PlacementPage() {
     setPlantId("");
     setPlantSearch("");
     setMsg("✅ Đã gán cây vào vị trí");
+    await refresh();
   }
 
   // Resolve names for display

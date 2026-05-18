@@ -2,19 +2,16 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { useData } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
-import { processQueue } from "@/lib/sync";
 import { round2 } from "@/lib/number";
-import { currentTimeMs } from "@/lib/time";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
   X, Pencil, Check, Package, Leaf, Plus, Trash2,
-  DollarSign, ChevronRight,
+  DollarSign,
 } from "lucide-react";
 import { PlatformGridModal } from "@/components/platform-grid-modal";
 
@@ -72,16 +69,14 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [moveTargetFloor, setMoveTargetFloor] = useState<number | "">("");
   const [showPlatformGridModal, setShowPlatformGridModal] = useState(false);
 
-  const detailPlatform = useLiveQuery(() => db.platforms.get(platformId), [platformId]);
-  const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
-  const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
-  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
-  const plants = useLiveQuery(() => db.plants.toArray(), [], []);
+  const { platforms, gardens, locations, plants, refresh } = useData();
+
+  const detailPlatform = platforms.find((p) => p.id === platformId);
 
   if (!detailPlatform) return null;
 
   const garden = gardens?.find((g) => g.id === detailPlatform.garden_id);
-  const platformLocs = (locations ?? []).filter((l) => l.platform_id === platformId);
+  const platformLocs = locations.filter((l) => l.platform_id === platformId);
   const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
   const free = round2(detailPlatform.capacity - used);
   const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
@@ -89,7 +84,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   function moveTargetFloorsForGarden(gardenId: string) {
     if (!gardenId) return [];
     return Array.from(new Set(
-      (platforms ?? [])
+      platforms
         .filter((p) => p.garden_id === gardenId && p.id !== platformId)
         .map((p) => p.floor)
     )).sort((a, b) => a - b);
@@ -106,15 +101,13 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       setToast({ text: "Tên sàn đã tồn tại ở tầng này!", type: "error" });
       return;
     }
-    const updated = { ...detailPlatform, name: newPlatformName.trim() };
-    await db.platforms.update(platformId, { name: newPlatformName.trim() });
-    await db.syncQueue.add({
-      id: uuidv4(), type: "UPDATE", entity: "platform",
-      payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    await fetch(`/api/platforms?id=${platformId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...detailPlatform, name: newPlatformName.trim() }),
     });
     setEditingPlatformName(false);
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function handleUpdateCapacity() {
@@ -128,28 +121,26 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       setToast({ text: `Sức chứa không được nhỏ hơn số cây hiện có (${used} tấm)`, type: "error" });
       return;
     }
-    const updated = { ...detailPlatform, capacity: val };
-    await db.platforms.update(platformId, { capacity: val });
-    await db.syncQueue.add({
-      id: uuidv4(), type: "UPDATE", entity: "platform",
-      payload: updated as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    await fetch(`/api/platforms?id=${platformId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...detailPlatform, capacity: val }),
     });
     setEditingCapacity(false);
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function doMoveBatch(locId: string) {
     if (!moveTargetPlatformId) return;
     if (!detailPlatform) return;
-    const loc = (locations ?? []).find((l) => l.id === locId);
+    const loc = locations.find((l) => l.id === locId);
     if (!loc) return;
     const targetPlatform = platforms?.find((p) => p.id === moveTargetPlatformId);
     if (!targetPlatform) return;
 
     const qty = round2(Number(moveQty) || loc.quantity);
 
-    const usedOnTarget = (locations ?? [])
+    const usedOnTarget = locations
       .filter((l) => l.platform_id === moveTargetPlatformId && l.id !== locId)
       .reduce((s, l) => s + l.quantity, 0);
     const freeOnTarget = round2(targetPlatform.capacity - usedOnTarget);
@@ -163,7 +154,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     }
 
     // Check if destination has a matching batch
-    const matchingBatch = (locations ?? []).find((l) =>
+    const matchingBatch = locations.find((l) =>
       l.id !== locId &&
       l.plant_id === loc.plant_id &&
       l.platform_id === moveTargetPlatformId &&
@@ -175,42 +166,34 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
 
     if (matchingBatch) {
       const mergedQty = round2(matchingBatch.quantity + qty);
-      await db.plantLocations.update(matchingBatch.id, { quantity: mergedQty });
-      await db.syncQueue.add({
-        id: uuidv4(), type: "UPDATE", entity: "plant_location",
-        payload: { ...matchingBatch, quantity: mergedQty } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      await fetch(`/api/plant-locations?id=${matchingBatch.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...matchingBatch, quantity: mergedQty }),
       });
 
       if (qty === loc.quantity) {
-        await db.plantLocations.delete(locId);
-        await db.syncQueue.add({
-          id: uuidv4(), type: "DELETE", entity: "plant_location",
-          payload: { id: locId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-        });
+        await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
       } else {
         const newOrigQty = round2(loc.quantity - qty);
-        await db.plantLocations.update(locId, { quantity: newOrigQty });
-        await db.syncQueue.add({
-          id: uuidv4(), type: "UPDATE", entity: "plant_location",
-          payload: { ...loc, quantity: newOrigQty } as Record<string, unknown>,
-          status: "pending", retry_count: 0, created_at: currentTimeMs(),
+        await fetch(`/api/plant-locations?id=${locId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...loc, quantity: newOrigQty }),
         });
       }
     } else if (qty === loc.quantity) {
-      await db.plantLocations.update(locId, { platform_id: moveTargetPlatformId });
-      await db.syncQueue.add({
-        id: uuidv4(), type: "UPDATE", entity: "plant_location",
-        payload: { ...loc, platform_id: moveTargetPlatformId } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      await fetch(`/api/plant-locations?id=${locId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...loc, platform_id: moveTargetPlatformId }),
       });
     } else {
       const newOrigQty = round2(loc.quantity - qty);
-      await db.plantLocations.update(locId, { quantity: newOrigQty });
-      await db.syncQueue.add({
-        id: uuidv4(), type: "UPDATE", entity: "plant_location",
-        payload: { ...loc, quantity: newOrigQty } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      await fetch(`/api/plant-locations?id=${locId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...loc, quantity: newOrigQty }),
       });
       const newLoc = {
         id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
@@ -218,11 +201,10 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         ...(loc.price != null ? { price: loc.price } : {}),
         ...(loc.status ? { status: loc.status } : {}),
       };
-      await db.plantLocations.add(newLoc);
-      await db.syncQueue.add({
-        id: uuidv4(), type: "CREATE", entity: "plant_location",
-        payload: newLoc as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      await fetch("/api/plant-locations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newLoc),
       });
     }
 
@@ -237,36 +219,30 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     const srcLabel = `${srcGarden?.name ?? ""} Tầng ${detailPlatform.floor} ${detailPlatform.name}`;
     const dstLabel = `${dstGarden?.name ?? ""} Tầng ${targetPlatform.floor} ${targetPlatform.name}`;
     const mergeNote = matchingBatch && qty === loc.quantity ? " (Gộp vào đợt cũ)" : "";
-    // moveRecord: tách ra để dễ mở rộng lưu audit log sau này
     const moveRecord = {
       qty,
       src: { gardenName: srcGarden?.name ?? "", floor: detailPlatform.floor, platformName: detailPlatform.name },
       dst: { gardenName: dstGarden?.name ?? "", floor: targetPlatform.floor, platformName: targetPlatform.name },
     };
     setToast({ text: `Đã chuyển ${moveRecord.qty} cây từ ${srcLabel} → ${dstLabel}${mergeNote}`, type: "success" });
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   async function doDeleteBatch(locId: string) {
-    const loc = (locations ?? []).find((l) => l.id === locId);
+    const loc = locations.find((l) => l.id === locId);
     if (!loc) return;
-    await db.plantLocations.delete(locId);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "DELETE", entity: "plant_location",
-      payload: { id: locId }, status: "pending", retry_count: 0, created_at: currentTimeMs(),
-    });
-    const plant = await db.plants.get(loc.plant_id);
+    await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
+    const plant = plants.find((p) => p.id === loc.plant_id);
     if (plant) {
       const newTotal = Math.max(0, round2(plant.total_quantity - loc.quantity));
-      await db.plants.update(loc.plant_id, { total_quantity: newTotal });
-      await db.syncQueue.add({
-        id: uuidv4(), type: "UPDATE", entity: "plant",
-        payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      await fetch(`/api/plants?id=${loc.plant_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...plant, total_quantity: newTotal }),
       });
     }
     setToast({ text: "Đã xoá đợt khỏi sàn", type: "success" });
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   const cartQtyByLoc = (locId: string) =>
@@ -285,7 +261,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     const requiredQty = round2(nextQty || maxQty);
     const freeSlots = round2(
       targetPlatform.capacity -
-        (locations ?? [])
+        locations
           .filter((l) => l.platform_id === targetPlatform.id)
           .reduce((s, l) => s + l.quantity, 0)
     );
@@ -452,7 +428,6 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                     return (
                       <div key={loc.id} className={`relative rounded-xl px-3 pr-0 py-2.5 space-y-2 transition-all duration-500 ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}>
                         {loc.status && ["trồng lại", "sang chậu"].includes(loc.status) && (
-                          // icon status at bottom left of div
                           <div className="absolute bottom-0 left-0 flex items-center">
                             <div className={`rounded-lg w-5 h-5 flex border-1 border-white items-center justify-center`}
                               style={{
@@ -589,18 +564,6 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                         {/* Inline move UI */}
                         {isMoving && (
                           <div className="space-y-2">
-                            {/* <div className="flex items-center gap-2">
-                              <label className="text-xs text-gray-500 shrink-0">Số lượng chuyển:</label>
-                              <input
-                                type="number"
-                                min={1}
-                                max={loc.quantity}
-                                className="w-16 h-6 border border-blue-200 rounded-lg px-2 text-sm bg-white outline-none text-center"
-                                value={moveQty}
-                                onChange={(e) => handleMoveQtyChange(e.target.value, loc.quantity)}
-                              />
-                              <span className="text-xs text-gray-400">/ {loc.quantity} tấm</span>
-                            </div> */}
                             {/* Garden + Floor selects */}
                             <div className="flex gap-2">
                               <select
@@ -654,7 +617,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                   {moveTargetPlatformId
                                     ? (() => {
                                         const p = platforms?.find((pl) => pl.id === moveTargetPlatformId);
-                                        return p ? `${p.name} (còn ${round2(p.capacity - (locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0))} chỗ)` : "— Chọn sàn —";
+                                        return p ? `${p.name} (còn ${round2(p.capacity - locations.filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0))} chỗ)` : "— Chọn sàn —";
                                       })()
                                     : "— Chọn sàn —"}
                                 </span>
@@ -702,7 +665,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
             </div>
           </div>
         </div>
-        
+
       <PlatformGridModal
         open={showPlatformGridModal && movingLocId !== null}
         onClose={() => setShowPlatformGridModal(false)}
@@ -713,12 +676,12 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         moveTargetFloor={moveTargetFloor}
         excludePlatformId={platformId}
         moveQty={moveQty}
-        maxMoveQty={movingLocId ? ((locations ?? []).find((l) => l.id === movingLocId)?.quantity ?? 0) : 0}
+        maxMoveQty={movingLocId ? (locations.find((l) => l.id === movingLocId)?.quantity ?? 0) : 0}
         onMoveQtyChange={(value) => {
-          const maxQty = movingLocId ? ((locations ?? []).find((l) => l.id === movingLocId)?.quantity ?? 0) : 0;
+          const maxQty = movingLocId ? (locations.find((l) => l.id === movingLocId)?.quantity ?? 0) : 0;
           handleMoveQtyChange(value, maxQty);
         }}
-        neededQty={round2(Number(moveQty) || (movingLocId ? ((locations ?? []).find((l) => l.id === movingLocId)?.quantity ?? 0) : 0))}
+        neededQty={round2(Number(moveQty) || (movingLocId ? (locations.find((l) => l.id === movingLocId)?.quantity ?? 0) : 0))}
         moveTargetPlatformId={moveTargetPlatformId}
         onSelectPlatform={(pid) => {
           const selecting = moveTargetPlatformId !== pid;

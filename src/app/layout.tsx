@@ -4,6 +4,7 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import SyncProvider from "@/components/SyncProvider";
 import { LoadingProvider } from "@/components/LoadingProvider";
+import { DataProvider } from "@/lib/data";
 import { SellCartBar } from "@/components/sell-cart-bar";
 
 const geistSans = Geist({
@@ -50,9 +51,11 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-white text-gray-900">
         <LoadingProvider>
           <SyncProvider>
-            <main className="flex-1 pb-20 px-4 pt-4">{children}</main>
-            <SellCartBar />
-            <BottomNav />
+            <DataProvider>
+              <main className="flex-1 pb-20 px-4 pt-4">{children}</main>
+              <SellCartBar />
+              <BottomNav />
+            </DataProvider>
           </SyncProvider>
         </LoadingProvider>
       </body>

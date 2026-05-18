@@ -3,13 +3,10 @@
 import { useState, useCallback, Suspense, useEffect } from "react";
 import { useDetailStack } from "@/lib/use-detail-stack";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { useData } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
-import { processQueue } from "@/lib/sync";
 import { Input } from "@/components/ui/input";
 import { round2 } from "@/lib/number";
-import { currentTimeMs } from "@/lib/time";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -141,10 +138,7 @@ function PlantsPageInner() {
   }, []);
 
 
-  const plants = useLiveQuery(() => db.plants.toArray(), [], []);
-  const gardens = useLiveQuery(() => db.gardens.toArray(), [], []);
-  const platforms = useLiveQuery(() => db.platforms.toArray(), [], []);
-  const locations = useLiveQuery(() => db.plantLocations.toArray(), [], []);
+  const { plants, gardens, platforms, locations, refresh } = useData();
 
   function floorsForGarden(gardenId: string) {
     return Array.from(new Set(
@@ -187,22 +181,21 @@ function PlantsPageInner() {
     let plant = resolvedId ? plants?.find((p) => p.id === resolvedId) ?? null : null;
 
     if (!plant) {
-      const newPlant = { id: uuidv4(), name, total_quantity: qty, image_url: imageUrl };
-      await db.plants.add(newPlant);
-      await db.syncQueue.add({
-        id: uuidv4(), type: "CREATE", entity: "plant",
-        payload: newPlant as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      const res = await fetch("/api/plants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: uuidv4(), name, total_quantity: qty, image_url: imageUrl }),
       });
-      plant = newPlant;
+      if (!res.ok) { setMsg({ text: "Lỗi tạo cây mới", type: "error" }); return; }
+      plant = await res.json();
     } else {
       const newTotal = round2(plant.total_quantity + qty);
-      await db.plants.update(plant.id, { total_quantity: newTotal });
-      await db.syncQueue.add({
-        id: uuidv4(), type: "UPDATE", entity: "plant",
-        payload: { ...plant, total_quantity: newTotal } as Record<string, unknown>,
-        status: "pending", retry_count: 0, created_at: currentTimeMs(),
+      const res = await fetch(`/api/plants?id=${plant.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...plant, total_quantity: newTotal }),
       });
+      if (!res.ok) { setMsg({ text: "Lỗi cập nhật cây", type: "error" }); return; }
       plant = { ...plant, total_quantity: newTotal };
     }
 
@@ -217,21 +210,21 @@ function PlantsPageInner() {
     }
 
     const loc = {
-      id: uuidv4(), plant_id: plant.id, platform_id: platformId,
+      id: uuidv4(), plant_id: plant!.id, platform_id: platformId,
       quantity: qty, pot_size: potSize, planted_date: plantedDate,
       ...(price ? { price: Number(price) } : {}),
     };
-    await db.plantLocations.add(loc);
-    await db.syncQueue.add({
-      id: uuidv4(), type: "CREATE", entity: "plant_location",
-      payload: loc as Record<string, unknown>,
-      status: "pending", retry_count: 0, created_at: currentTimeMs(),
+    const locRes = await fetch("/api/plant-locations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loc),
     });
+    if (!locRes.ok) { setMsg({ text: "Lỗi lưu vị trí", type: "error" }); return; }
 
     setName(""); setSelectedPlantId(null); setQuantity(""); setPrice("");
     setImageUrl(""); setPlantedDate(todayStr());
     setMsg({ text: "Đã lưu cây và vị trí thành công!", type: "success" });
-    processQueue().catch(console.error);
+    await refresh();
   }
 
   function handleSubmit(e: React.FormEvent) {
