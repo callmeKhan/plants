@@ -118,6 +118,7 @@ function PlantsPageInner() {
   const [filterStock, setFilterStock] = useState<"all" | "out_of_stock">("all");
   const [filterPotSize, setFilterPotSize] = useState<number[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterImage, setFilterImage] = useState<"all" | "has_image" | "no_image">("all");
   const [showFilters, setShowFilters] = useState(false);
   const [closingFilters, setClosingFilters] = useState(false);
 
@@ -287,13 +288,27 @@ function PlantsPageInner() {
       return batches.some((b) => b.status === filterStatus);
     });
   }
+  if (filterImage === "has_image") {
+    plantIds = plantIds.filter((pid) => {
+      const plant = plants?.find((p) => p.id === pid);
+      return !!plant?.image_url;
+    });
+  } 
+  
+  if (filterImage === "no_image") {
+    plantIds = plantIds.filter((pid) => {
+      const plant = plants?.find((p) => p.id === pid);
+      return !plant?.image_url;
+    });
+  }
+
   plantIds = plantIds.sort((a, b) => {
     const nameA = plants?.find((p) => p.id === a)?.name ?? a;
     const nameB = plants?.find((p) => p.id === b)?.name ?? b;
     return nameA.localeCompare(nameB, "vi", { sensitivity: "base", numeric: true });
   });
   const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort((a, b) => a - b);
-  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus;
+  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all";
 
   return (
     <>
@@ -505,7 +520,7 @@ function PlantsPageInner() {
             </h2>
             {hasActiveFilter && (
               <button
-                onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); }}
+                onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); }}
                 className="text-xs text-emerald-600 flex items-center gap-1"
               >
                 <X className="w-3 h-3" /> Bỏ lọc
@@ -533,7 +548,7 @@ function PlantsPageInner() {
               }}
             >
               <SlidersHorizontal className="w-4 h-4" />
-              {(filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus) && (
+              {(filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all") && (
                 <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
               )}
             </button>
@@ -557,7 +572,7 @@ function PlantsPageInner() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">Bộ lọc</h3>
                   <button
-                    onClick={() => { setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); }}
+                    onClick={() => { setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); }}
                     className="text-xs text-gray-400 hover:text-gray-600"
                   >
                     Xóa tất cả
@@ -649,6 +664,43 @@ function PlantsPageInner() {
                       }}
                     >
                       🪴 Sang chậu
+                    </button>
+                  </div>
+                </div>
+
+                {/* Image filter */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Hình ảnh</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setFilterImage("all")}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                      style={{
+                        backgroundColor: filterImage === "all" ? "#059669" : "#f3f4f6",
+                        color: filterImage === "all" ? "#fff" : "#6b7280",
+                      }}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      onClick={() => setFilterImage("has_image")}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                      style={{
+                        backgroundColor: filterImage === "has_image" ? "#2563eb" : "#f3f4f6",
+                        color: filterImage === "has_image" ? "#fff" : "#6b7280",
+                      }}
+                    >
+                      Có hình
+                    </button>
+                    <button
+                      onClick={() => setFilterImage("no_image")}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                      style={{
+                        backgroundColor: filterImage === "no_image" ? "#f59e0b" : "#f3f4f6",
+                        color: filterImage === "no_image" ? "#fff" : "#6b7280",
+                      }}
+                    >
+                      Chưa có hình
                     </button>
                   </div>
                 </div>
