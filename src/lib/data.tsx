@@ -91,12 +91,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [locations, setLocations] = useState<PlantLocation[]>([]);
 
-  const setters: Record<Resource, (data: never[]) => void> = {
+  const setters = useMemo<Record<Resource, (data: never[]) => void>>(() => ({
     gardens: setGardens,
     plants: setPlants,
     platforms: setPlatforms,
     locations: setLocations,
-  };
+  }), []);
 
   const refresh = useCallback(async (...resources: Resource[]) => {
     const targets = resources.length === 0 ? ALL_RESOURCES : resources;
@@ -135,8 +135,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
+  const value = useMemo(
+    () => ({ gardens, plants, platforms, locations, refresh, mutate }),
+    [gardens, plants, platforms, locations, refresh, mutate],
+  );
+
   return (
-    <DataContext value={{ gardens, plants, platforms, locations, refresh, mutate }}>
+    <DataContext value={value}>
       {children}
     </DataContext>
   );
