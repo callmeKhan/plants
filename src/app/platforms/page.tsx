@@ -209,9 +209,8 @@ function PlatformsPageInner() {
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {gardens?.map((g) => {
                   const gardenPlatformIds = platforms.filter((p) => p.garden_id === g.id).map((p) => p.id);
-                  const plantCount = round2(locations
-                    .filter((l) => gardenPlatformIds.includes(l.platform_id))
-                    .reduce((s, l) => s + l.quantity, 0));
+                  const gardenPlatformsArr = platforms.filter((p) => p.garden_id === g.id);
+                  const totalCapacity = round2(gardenPlatformsArr.reduce((s, p) => s + p.capacity, 0));
                   const platformCount = gardenPlatformIds.length;
                   return (
                     <Card key={g.id} className="shrink-0">
@@ -220,7 +219,7 @@ function PlatformsPageInner() {
                           <p className="font-semibold text-gray-900 text-sm whitespace-nowrap">{g.name}</p>
                           <div className="flex gap-1.5 mt-0.5">
                             <Badge variant="secondary">{platformCount} sàn</Badge>
-                            <Badge variant="default">{plantCount} tấm</Badge>
+                            <Badge variant="default">{totalCapacity} tấm</Badge>
                           </div>
                         </div>
                         <button
@@ -324,12 +323,19 @@ function PlatformsPageInner() {
                   <div key={g.id} className="space-y-2">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#16a34a" }} />
-                      <span className="font-bold text-gray-800 text-sm">{g.name}</span>
+                      <span className="font-bold text-gray-800 text-sm">
+                        {g.name} &nbsp;  &nbsp;
+                        {floors.length > 1 && <Badge variant="default" className="h-4">{round2((locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - (locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))})</b>&nbsp; tấm</Badge>}
+
+                      </span>
                     </div>
                     {floors.map((floorNum) => {
                       const floorPlatforms = gardenPlatforms.filter((p) => p.floor === floorNum);
                       const floorKey = `${g.id}-${floorNum}`;
                       const isExpanded = expandedFloors[floorKey];
+
+                      const available = round2((locations ?? []).filter((l) => floorPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))
+                      const total = round2(floorPlatforms.reduce((s, p) => s + p.capacity, 0))
                       return (
                         <div key={floorNum} className="pl-4 border-l-2 border-gray-100 space-y-1.5 mb-4">
                           <button
@@ -341,7 +347,8 @@ function PlatformsPageInner() {
                               style={{ transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)" }}
                             />
                             Tầng {floorNum}
-                            <Badge variant="secondary" className="h-4">{floorPlatforms.length}</Badge>
+                            <Badge variant="secondary" className="h-4">{floorPlatforms.length} sàn</Badge>
+                            <Badge variant="default" className="h-4">{available}/{total} &nbsp;<b>({round2(total - available)})</b>&nbsp; tấm</Badge>
                           </button>
                           <Collapse open={!!isExpanded}>
                             <div className="flex gap-3 items-start">

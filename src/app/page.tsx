@@ -199,7 +199,11 @@ export default function Dashboard() {
           {(() => {
             const sortedGardens = (gardens ?? [])
               .filter((g) => (platforms ?? []).some((p) => p.garden_id === g.id))
-              .sort((a, b) => a.name.localeCompare(b.name));
+              .sort((a, b) => {
+                if (a.name === "Trong nhà") return 1;
+                if (b.name === "Trong nhà") return -1;
+                return a.name.localeCompare(b.name);
+              });
             if (sortedGardens.length === 0) return null;
             const selectedId = activeGardenId && sortedGardens.find((g) => g.id === activeGardenId)
               ? activeGardenId
@@ -268,10 +272,15 @@ export default function Dashboard() {
                       );
                     };
 
+                    const available = round2((locations ?? []).filter((l) => floorPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))
+                    const total = round2(floorPlatforms.reduce((s, p) => s + p.capacity, 0))
+
                     return (
                       <div key={floorNum}>
                         <span className="text-[11px] text-gray-400 font-medium w-8 pt-1.5 shrink-0">
                           Tầng {floorNum}
+                          <Badge variant="secondary" className="h-4">{floorPlatforms.length} sàn</Badge>
+                          <Badge variant="default" className="h-4">{available}/{total} &nbsp;<b>({round2(total - available)})</b>&nbsp; tấm</Badge>
                         </span>
                         <div className="flex-1 flex divide-x divide-gray-200">
                           {tPlatforms.length > 0 && (
@@ -294,6 +303,13 @@ export default function Dashboard() {
                     );
                   })}
                 </div>
+                {floors.length > 1 && (
+                  <div className="text-[11px] text-gray-400 font-medium text-right">
+                    Tổng
+                    <Badge variant="secondary" className="h-4">{gardenPlatforms.length} sàn</Badge>
+                    <Badge variant="default" className="h-4">{round2((locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - (locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))})</b>&nbsp; tấm</Badge>
+                  </div>
+                )}
               </>
             );
           })()}
