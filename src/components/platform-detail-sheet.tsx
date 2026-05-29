@@ -1,8 +1,24 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
+import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import Link from "next/link";
-import { useData } from "@/lib/data";
+import { useData, type PlantLocation } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
 import { round2 } from "@/lib/number";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
@@ -11,7 +27,7 @@ import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
   X, Pencil, Check, Package, Leaf, Plus, Trash2,
-  DollarSign,
+  DollarSign, GripVertical, ListOrdered,
 } from "lucide-react";
 import { PlatformGridModal } from "@/components/platform-grid-modal";
 import { PlantImage } from "@/components/plant-image";
@@ -20,6 +36,58 @@ function fmtDate(d: string) {
   if (!d) return "";
   const [y, m, day] = d.split("-");
   return `${day}/${m}/${y}`;
+}
+
+function sameStringArray(a: string[], b: string[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function syncLocationOrder(draftOrder: string[], currentOrder: string[]) {
+  const currentIds = new Set(currentOrder);
+  const keptDraftIds = draftOrder.filter((id) => currentIds.has(id));
+  const missingIds = currentOrder.filter((id) => !keptDraftIds.includes(id));
+  return [...keptDraftIds, ...missingIds];
+}
+
+type SortableBatchShellRenderArgs = Pick<
+  ReturnType<typeof useSortable>,
+  "attributes" | "listeners" | "setActivatorNodeRef" | "isDragging"
+>;
+
+function SortableBatchShell({
+  id,
+  disabled,
+  className,
+  children,
+}: {
+  id: string;
+  disabled: boolean;
+  className: string;
+  children: (args: SortableBatchShellRenderArgs) => ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? "none" : transition,
+    zIndex: isDragging ? 20 : undefined,
+    opacity: isDragging ? 0.85 : undefined,
+    touchAction: disabled ? undefined : "pan-y",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className={className}>
+      {children({ attributes, listeners, setActivatorNodeRef, isDragging })}
+    </div>
+  );
 }
 
 interface PlatformDetailSheetProps {
@@ -68,14 +136,38 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [moveTargetFloor, setMoveTargetFloor] = useState<number | "">("");
   const [showPlatformGridModal, setShowPlatformGridModal] = useState(false);
 
+  // Reorder batches
+  const [isReordering, setIsReordering] = useState(false);
+  const [draftOrder, setDraftOrder] = useState<string[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
+
   const { platforms, gardens, plants, locationsByPlatform, locationsById, mutate, refresh } = useData();
 
   const detailPlatform = platforms.find((p) => p.id === platformId);
+  const platformLocs = useMemo(() => locationsByPlatform.get(platformId) ?? [], [locationsByPlatform, platformId]);
+  const platformLocIds = useMemo(() => platformLocs.map((loc) => loc.id), [platformLocs]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  );
+
+  const activeOrder = useMemo(
+    () => isReordering ? syncLocationOrder(draftOrder, platformLocIds) : platformLocIds,
+    [draftOrder, isReordering, platformLocIds]
+  );
+
+  const orderedPlatformLocs = useMemo(() => {
+    if (!isReordering) return platformLocs;
+
+    const locsById = new Map(platformLocs.map((loc) => [loc.id, loc]));
+    return activeOrder
+      .map((id) => locsById.get(id))
+      .filter((loc): loc is PlantLocation => Boolean(loc));
+  }, [activeOrder, isReordering, platformLocs]);
 
   if (!detailPlatform) return null;
 
   const garden = gardens?.find((g) => g.id === detailPlatform.garden_id);
-  const platformLocs = (locationsByPlatform.get(platformId) ?? [])
   const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
   const free = round2(detailPlatform.capacity - used);
   const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
@@ -290,6 +382,75 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     }
   }
 
+  async function saveBatchOrder() {
+    setSavingOrder(true);
+    try {
+      const res = await fetch("/api/plant-locations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform_id: platformId, ordered_ids: activeOrder }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to save order");
+      }
+
+      const updatedLocations = await res.json() as PlantLocation[];
+      updatedLocations.forEach((loc) => mutate.upsertLocation(loc));
+      setDraftOrder(updatedLocations.map((loc) => loc.id));
+      setIsReordering(false);
+      setToast({ text: "Đã lưu thứ tự đợt trồng", type: "success" });
+    } catch {
+      await refresh("locations");
+      setToast({ text: "Lỗi lưu thứ tự đợt trồng", type: "error" });
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  function handleToggleReorder() {
+    if (!detailPlatform) return;
+    if (savingOrder) return;
+
+    if (!isReordering) {
+      setSellingLocId(null);
+      setSellQty("");
+      setMovingLocId(null);
+      setMoveTargetPlatformId("");
+      setMoveQty("");
+      setMoveTargetGardenId("");
+      setMoveTargetFloor("");
+      setShowPlatformGridModal(false);
+      setDraftOrder(platformLocIds);
+      setIsReordering(true);
+      return;
+    }
+
+    if (sameStringArray(activeOrder, platformLocIds)) {
+      setIsReordering(false);
+      return;
+    }
+
+    openConfirm(
+      `Lưu thứ tự ${activeOrder.length} đợt trồng trên sàn "${detailPlatform.name}"?`,
+      () => { void saveBatchOrder(); }
+    );
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setDraftOrder((currentOrder) => {
+      const syncedOrder = syncLocationOrder(currentOrder, platformLocIds);
+      const oldIndex = syncedOrder.indexOf(String(active.id));
+      const newIndex = syncedOrder.indexOf(String(over.id));
+      if (oldIndex === -1 || newIndex === -1) return currentOrder;
+      return arrayMove(syncedOrder, oldIndex, newIndex);
+    });
+  }
+
   return (
     <>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
@@ -347,12 +508,29 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                 )}
                 {garden && <p className="text-xs text-gray-400 mt-1">{garden.name} · Tầng {detailPlatform.floor}</p>}
               </div>
-              <button
-                className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                onClick={handleClose}
-              >
-                <X className="w-4 h-4 text-gray-600" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  className={`w-10 h-8 rounded-full flex items-center justify-center transition-colors ${
+                    isReordering
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-500 hover:text-gray-700"
+                  } disabled:opacity-40 disabled:hover:text-gray-500`}
+                  onClick={handleToggleReorder}
+                  disabled={savingOrder || (!isReordering && platformLocs.length < 2)}
+                  aria-pressed={isReordering}
+                  aria-label={isReordering ? "Lưu thứ tự đợt trồng" : "Sắp xếp đợt trồng"}
+                  title={isReordering ? "Lưu thứ tự đợt trồng" : "Sắp xếp đợt trồng"}
+                >
+                  <ListOrdered className="w-4 h-4" />
+                </button>
+                <button
+                  className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  onClick={handleClose}
+                >
+                  <X className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -426,112 +604,152 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                   <p className="text-sm">Chưa có cây nào trên sàn này</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {platformLocs.map((loc) => {
-                    const plant = plants?.find((p) => p.id === loc.plant_id);
-                    const isMoving = movingLocId === loc.id;
-                    const isSelling = sellingLocId === loc.id;
-                    const inCartQty = cartQtyByLoc(loc.id);
-                    const effectiveQty = round2(loc.quantity - inCartQty);
-                    const fullySold = effectiveQty <= 0;
-                    const mapStatusIcons: Record<string, { text: string, bg_color: string }> = {
-                      "trồng lại": {
-                        text: '🌱',
-                        bg_color: 'rgba(255, 237, 164, 1)',
-                      },
-                      "sang chậu": {
-                        text: '🪴',
-                        bg_color: 'rgba(162, 203, 255, 1)',
-                      }
-                    }
-                    return (
-                      <div key={loc.id} className={`relative rounded-xl px-3 pr-0 py-2.5 space-y-2 transition-all duration-500 ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}>
-                        {loc.status && ["trồng lại", "sang chậu"].includes(loc.status) && (
-                          <div className="absolute bottom-0 left-0 flex items-center">
-                            <div className={`rounded-lg w-5 h-5 flex border-1 border-white items-center justify-center`}
-                              style={{
-                                backgroundColor: loc.status && mapStatusIcons[loc.status].bg_color,
-                              }}>
-                              <span className="text-xs font-semibold">
-                                {loc.status && mapStatusIcons[loc.status].text}
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext items={orderedPlatformLocs.map((loc) => loc.id)} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-2">
+                      {orderedPlatformLocs.map((loc) => {
+                        const plant = plants?.find((p) => p.id === loc.plant_id);
+                        const isMoving = movingLocId === loc.id;
+                        const isSelling = sellingLocId === loc.id;
+                        const inCartQty = cartQtyByLoc(loc.id);
+                        const effectiveQty = round2(loc.quantity - inCartQty);
+                        const fullySold = effectiveQty <= 0;
+                        const mapStatusIcons: Record<string, { text: string, bg_color: string }> = {
+                          "trồng lại": {
+                            text: '🌱',
+                            bg_color: 'rgba(255, 237, 164, 1)',
+                          },
+                          "sang chậu": {
+                            text: '🪴',
+                            bg_color: 'rgba(162, 203, 255, 1)',
+                          }
+                        }
+                        const statusIcon = loc.status === "trồng lại" || loc.status === "sang chậu"
+                          ? mapStatusIcons[loc.status]
+                          : null;
+                        return (
+                          <SortableBatchShell
+                            key={loc.id}
+                            id={loc.id}
+                            disabled={!isReordering}
+                            className={`relative rounded-xl py-2.5 space-y-2 ${isReordering ? "min-h-[48px] w-[75%] px-3 bg-white shadow-sm" : "pl-3 pr-0 transition-colors duration-200"} ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}
+                          >
+                            {({ attributes, listeners, setActivatorNodeRef, isDragging }) => (
+                              <>
                         <div className="flex items-center gap-3">
-                          <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-emerald-50 shrink-0">
-                            <PlantImage src={plant?.image_url} alt={plant?.name ?? ""} sizes="40px" />
+                          <div className="relative w-10 h-10 shrink-0">
+                            <div className="relative w-full h-full rounded-xl overflow-hidden bg-emerald-50">
+                              <PlantImage src={plant?.image_url} alt={plant?.name ?? ""} sizes="40px" />
+                            </div>
+                            {statusIcon && (
+                              <div
+                                className="absolute -bottom-1 -left-1 z-10 rounded-lg w-5 h-5 flex border border-white items-center justify-center shadow-sm"
+                                style={{ backgroundColor: statusIcon.bg_color }}
+                              >
+                                <span className="text-xs font-semibold leading-none">
+                                  {statusIcon.text}
+                                </span>
+                              </div>
+                            )}
                           </div>
                           <div
-                            className="flex-1 min-w-0 cursor-pointer"
-                            onClick={() => onShowPlantDetail?.(loc.plant_id, loc.id, plant?.name ?? loc.plant_id)}
+                            className={`flex-1 min-w-0 ${isReordering ? "cursor-default" : "cursor-pointer"}`}
+                            onClick={() => {
+                              if (!isReordering) onShowPlantDetail?.(loc.plant_id, loc.id, plant?.name ?? loc.plant_id);
+                            }}
                           >
                             <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
-                            <div className="flex justify-start items-center gap-1.5 text-xs text-gray-500 mt-0.5">
-                              <span style={{ width: "65px" }}>
-                                {inCartQty > 0 ? `${effectiveQty}/${loc.quantity}` : loc.quantity} tấm
-                              </span>
-                              <span style={{ width: "65px" }}>chậu {loc.pot_size}</span>
-                              <span>{fmtDate(loc.planted_date)}</span>
+                            {isReordering ? (
+                              <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                {inCartQty > 0 ? `${effectiveQty}/${loc.quantity}` : loc.quantity} tấm · chậu {loc.pot_size}
+                              </p>
+                            ) : (
+                              <div className="flex justify-start items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                                <span style={{ width: "65px" }}>
+                                  {inCartQty > 0 ? `${effectiveQty}/${loc.quantity}` : loc.quantity} tấm
+                                </span>
+                                <span style={{ width: "65px" }}>chậu {loc.pot_size}</span>
+                                <span>{fmtDate(loc.planted_date)}</span>
+                              </div>
+                            )}
+                          </div>
+                          {isReordering && (
+                            <button
+                              type="button"
+                              ref={setActivatorNodeRef}
+                              {...attributes}
+                              {...listeners}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 touch-none ${
+                                isDragging ? "cursor-grabbing bg-blue-50 text-blue-600" : "cursor-grab bg-gray-50 text-gray-400"
+                              }`}
+                              aria-label="Kéo để đổi vị trí"
+                            >
+                              <GripVertical className="w-4 h-4" />
+                            </button>
+                          )}
+                          {!isReordering && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                style={{ backgroundColor: isSelling ? "#dcfce7" : "#ecfdf5", color: isSelling ? "#15803d" : "#34d399" }}
+                                disabled={fullySold && !isSelling}
+                                onClick={() => {
+                                  if (isSelling) {
+                                    setSellingLocId(null);
+                                    setSellQty("");
+                                  } else {
+                                    setSellingLocId(loc.id);
+                                    setSellQty(String(effectiveQty));
+                                    setMovingLocId(null);
+                                  }
+                                }}
+                              >
+                                <DollarSign className="w-4 h-4" />
+                              </button>
+                              <button
+                                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                style={{ backgroundColor: isMoving ? "#dbeafe" : "#fff7ed" }}
+                                onClick={() => {
+                                  if (isMoving) {
+                                    setMovingLocId(null);
+                                    setMoveTargetPlatformId("");
+                                    setMoveQty("");
+                                    setMoveTargetGardenId("");
+                                    setMoveTargetFloor("");
+                                    setShowPlatformGridModal(false);
+                                  } else {
+                                    setMovingLocId(loc.id);
+                                    setMoveTargetPlatformId("");
+                                    setMoveQty(String(loc.quantity));
+                                    setMoveTargetGardenId("");
+                                    setMoveTargetFloor("");
+                                    setShowPlatformGridModal(false);
+                                  }
+                                }}
+                              >
+                                <Pencil className="w-4 h-4" style={{ color: isMoving ? "#2563eb" : "#f97316" }} />
+                              </button>
+                              <button
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 bg-red-50"
+                                onClick={() => {
+                                  openConfirm(
+                                    `Xoá ${loc.quantity} tấm "${plant?.name ?? ""}" khỏi sàn?`,
+                                    () => doDeleteBatch(loc.id)
+                                  );
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              className="w-8 h-8 rounded-lg flex items-center justify-center"
-                              style={{ backgroundColor: isSelling ? "#dcfce7" : "#ecfdf5", color: isSelling ? "#15803d" : "#34d399" }}
-                              disabled={fullySold && !isSelling}
-                              onClick={() => {
-                                if (isSelling) {
-                                  setSellingLocId(null);
-                                  setSellQty("");
-                                } else {
-                                  setSellingLocId(loc.id);
-                                  setSellQty(String(effectiveQty));
-                                  setMovingLocId(null);
-                                }
-                              }}
-                            >
-                              <DollarSign className="w-4 h-4" />
-                            </button>
-                            <button
-                              className="w-8 h-8 rounded-lg flex items-center justify-center"
-                              style={{ backgroundColor: isMoving ? "#dbeafe" : "#fff7ed" }}
-                              onClick={() => {
-                                if (isMoving) {
-                                  setMovingLocId(null);
-                                  setMoveTargetPlatformId("");
-                                  setMoveQty("");
-                                  setMoveTargetGardenId("");
-                                  setMoveTargetFloor("");
-                                  setShowPlatformGridModal(false);
-                                } else {
-                                  setMovingLocId(loc.id);
-                                  setMoveTargetPlatformId("");
-                                  setMoveQty(String(loc.quantity));
-                                  setMoveTargetGardenId("");
-                                  setMoveTargetFloor("");
-                                  setShowPlatformGridModal(false);
-                                }
-                              }}
-                            >
-                              <Pencil className="w-4 h-4" style={{ color: isMoving ? "#2563eb" : "#f97316" }} />
-                            </button>
-                            <button
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 bg-red-50"
-                              onClick={() => {
-                                openConfirm(
-                                  `Xoá ${loc.quantity} tấm "${plant?.name ?? ""}" khỏi sàn?`,
-                                  () => doDeleteBatch(loc.id)
-                                );
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          )}
                         </div>
 
                         {/* Inline sell UI */}
-                        {isSelling && (
+                        {!isReordering && isSelling && (
                           <div className="space-y-2 rounded-lg bg-emerald-50 p-2">
                             <div className="flex items-center gap-2">
                               <label className="text-xs text-emerald-800 shrink-0">Số lượng bán:</label>
@@ -575,7 +793,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                         )}
 
                         {/* Inline move UI */}
-                        {isMoving && (
+                        {!isReordering && isMoving && (
                           <div className="space-y-2">
                             {/* Garden + Floor selects */}
                             <div className="flex gap-2">
@@ -670,10 +888,14 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                             </div>
                           </div>
                         )}
-                      </div>
-                    );
-                  })}
-                </div>
+                              </>
+                            )}
+                          </SortableBatchShell>
+                        );
+                      })}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
           </div>

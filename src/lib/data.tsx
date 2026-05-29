@@ -31,6 +31,7 @@ export interface PlantLocation {
   quantity: number;
   pot_size: number;
   planted_date: string;
+  sort_order: number;
   price?: number;
   status?: string;
 }
@@ -142,6 +143,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     for (const l of locations) {
       const arr = map.get(l.platform_id);
       if (arr) arr.push(l); else map.set(l.platform_id, [l]);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+        return orderDiff || a.id.localeCompare(b.id);
+      });
     }
     return map;
   }, [locations]);

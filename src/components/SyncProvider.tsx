@@ -14,8 +14,11 @@ export default function SyncProvider({
   const { increment, decrement } = useLoading();
   const incrementRef = useRef(increment);
   const decrementRef = useRef(decrement);
-  incrementRef.current = increment;
-  decrementRef.current = decrement;
+
+  useEffect(() => {
+    incrementRef.current = increment;
+    decrementRef.current = decrement;
+  }, [increment, decrement]);
 
   useEffect(() => {
     // Guard: do not double-wrap (React StrictMode mounts effects twice in dev)
@@ -46,7 +49,6 @@ export default function SyncProvider({
     return () => {
       window.fetch = original;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <>{children}</>;

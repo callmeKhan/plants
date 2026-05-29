@@ -48,6 +48,8 @@ export function MonthlySalesChart() {
   }, []);
 
   useEffect(() => {
+    // Initial client fetch; this component has no server-provided sales data.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
 

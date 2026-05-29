@@ -149,9 +149,12 @@ Nếu **không có env vars**, app hoạt động hoàn toàn offline với Inde
   "id": "string",
   "plant_id": "string",
   "platform_id": "string",
-  "quantity": "number"
+  "quantity": "number",
+  "sort_order": "number"
 }
 ```
+
+For existing Supabase databases, apply `supabase-plant-locations-sort-order.sql` before relying on saved batch ordering.
 
 #### `sync_queue`
 
@@ -196,7 +199,7 @@ Sync worker chạy mỗi 30 giây + tự động sync khi thiết bị online tr
 | ----------------- | ----------------------------------- |
 | `plants`          | id, name, total_quantity, image_url |
 | `platforms`       | id, floor, side, name, capacity     |
-| `plant_locations` | id, plant_id, platform_id, quantity |
+| `plant_locations` | id, plant_id, platform_id, quantity, sort_order |
 
 ---
 
@@ -366,7 +369,8 @@ create table if not exists plant_locations (
   platform_id text references platforms(id) on delete cascade,
   quantity integer not null,
   pot_size integer default 14,
-  planted_date text default ''
+  planted_date text default '',
+  sort_order integer not null default 0
 );
 
 create table if not exists gardens (
