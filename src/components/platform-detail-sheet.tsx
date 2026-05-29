@@ -68,14 +68,14 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [moveTargetFloor, setMoveTargetFloor] = useState<number | "">("");
   const [showPlatformGridModal, setShowPlatformGridModal] = useState(false);
 
-  const { platforms, gardens, locations, plants, mutate, refresh } = useData();
+  const { platforms, gardens, plants, locationsByPlatform, locationsById, mutate, refresh } = useData();
 
   const detailPlatform = platforms.find((p) => p.id === platformId);
 
   if (!detailPlatform) return null;
 
   const garden = gardens?.find((g) => g.id === detailPlatform.garden_id);
-  const platformLocs = locations.filter((l) => l.platform_id === platformId);
+  const platformLocs = (locationsByPlatform.get(platformId) ?? [])
   const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
   const free = round2(detailPlatform.capacity - used);
   const pct = detailPlatform.capacity > 0 ? Math.round((used / detailPlatform.capacity) * 100) : 0;
@@ -140,16 +140,15 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   async function doMoveBatch(locId: string) {
     if (!moveTargetPlatformId) return;
     if (!detailPlatform) return;
-    const loc = locations.find((l) => l.id === locId);
+    const loc = locationsById.get(locId)
     if (!loc) return;
     const targetPlatform = platforms?.find((p) => p.id === moveTargetPlatformId);
     if (!targetPlatform) return;
 
     const qty = round2(Number(moveQty) || loc.quantity);
 
-    const usedOnTarget = locations
-      .filter((l) => l.platform_id === moveTargetPlatformId && l.id !== locId)
-      .reduce((s, l) => s + l.quantity, 0);
+    const targetLocs = locationsByPlatform.get(moveTargetPlatformId) ?? [];
+    const usedOnTarget = targetLocs.filter(l => l.id !== locId).reduce((s, l) => s + l.quantity, 0);
     const freeOnTarget = round2(targetPlatform.capacity - usedOnTarget);
 
     if (qty > freeOnTarget) {
@@ -161,10 +160,9 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     }
 
     // Check if destination has a matching batch
-    const matchingBatch = locations.find((l) =>
+    const matchingBatch = targetLocs.find((l) =>
       l.id !== locId &&
       l.plant_id === loc.plant_id &&
-      l.platform_id === moveTargetPlatformId &&
       l.pot_size === loc.pot_size &&
       l.planted_date === loc.planted_date &&
       (l.price ?? null) === (loc.price ?? null) &&
@@ -246,7 +244,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   }
 
   async function doDeleteBatch(locId: string) {
-    const loc = locations.find((l) => l.id === locId);
+    const loc = locationsById.get(locId);
     if (!loc) return;
     try {
       const delRes = await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
@@ -284,10 +282,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
 
     const requiredQty = round2(nextQty || maxQty);
     const freeSlots = round2(
-      targetPlatform.capacity -
-        locations
-          .filter((l) => l.platform_id === targetPlatform.id)
-          .reduce((s, l) => s + l.quantity, 0)
+      targetPlatform.capacity - (locationsByPlatform.get(targetPlatform.id) ?? []).reduce((s, l) => s + l.quantity, 0)
     );
 
     if (freeSlots < requiredQty) {
@@ -635,7 +630,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                   {moveTargetPlatformId
                                     ? (() => {
                                         const p = platforms?.find((pl) => pl.id === moveTargetPlatformId);
-                                        return p ? `${p.name} (còn ${round2(p.capacity - locations.filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0))} chỗ)` : "— Chọn sàn —";
+                                        return p ? `${p.name} (còn ${round2(p.capacity - (locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0))} chỗ)` : "— Chọn sàn —";
                                       })()
                                     : "— Chọn sàn —"}
                                 </span>
@@ -685,21 +680,21 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         </div>
 
       <PlatformGridModal
+        locationsByPlatform={locationsByPlatform}
         open={showPlatformGridModal && movingLocId !== null}
         onClose={() => setShowPlatformGridModal(false)}
         platforms={platforms}
-        locations={locations}
         gardens={gardens}
         moveTargetGardenId={moveTargetGardenId}
         moveTargetFloor={moveTargetFloor}
         excludePlatformId={platformId}
         moveQty={moveQty}
-        maxMoveQty={movingLocId ? (locations.find((l) => l.id === movingLocId)?.quantity ?? 0) : 0}
+        maxMoveQty={movingLocId ? (locationsById.get(movingLocId)?.quantity ?? 0) : 0}
         onMoveQtyChange={(value) => {
-          const maxQty = movingLocId ? (locations.find((l) => l.id === movingLocId)?.quantity ?? 0) : 0;
+          const maxQty = movingLocId ? (locationsById.get(movingLocId)?.quantity ?? 0) : 0;
           handleMoveQtyChange(value, maxQty);
         }}
-        neededQty={round2(Number(moveQty) || (movingLocId ? (locations.find((l) => l.id === movingLocId)?.quantity ?? 0) : 0))}
+        neededQty={round2(Number(moveQty) || (movingLocId ? (locationsById.get(movingLocId)?.quantity ?? 0) : 0))}
         moveTargetPlatformId={moveTargetPlatformId}
         onSelectPlatform={(pid) => {
           const selecting = moveTargetPlatformId !== pid;

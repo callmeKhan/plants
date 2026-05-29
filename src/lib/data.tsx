@@ -55,6 +55,9 @@ interface DataContextType {
   plants: Plant[];
   platforms: Platform[];
   locations: PlantLocation[];
+  locationsByPlatform: Map<string, PlantLocation[]>;
+  locationsByPlant: Map<string, PlantLocation[]>;
+  locationsById: Map<string, PlantLocation>;
   refresh: (...resources: Resource[]) => Promise<void>;
   mutate: Mutate;
 }
@@ -72,6 +75,9 @@ const DataContext = createContext<DataContextType>({
   plants: [],
   platforms: [],
   locations: [],
+  locationsByPlatform: new Map(),
+  locationsByPlant: new Map(),
+  locationsById: new Map(),
   refresh: async () => {},
   mutate: defaultMutate,
 });
@@ -131,17 +137,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const locationsByPlatform = useMemo(() => {
+    const map = new Map<string, PlantLocation[]>();
+    for (const l of locations) {
+      const arr = map.get(l.platform_id);
+      if (arr) arr.push(l); else map.set(l.platform_id, [l]);
+    }
+    return map;
+  }, [locations]);
+
+  const locationsByPlant = useMemo(() => {
+    const map = new Map<string, PlantLocation[]>();
+    for (const l of locations) {
+      const arr = map.get(l.plant_id);
+      if (arr) arr.push(l); else map.set(l.plant_id, [l]);
+    }
+    return map;
+  }, [locations]);
+
+  const locationsById = useMemo(() => {
+    const map = new Map<string, PlantLocation>();
+    for (const l of locations) map.set(l.id, l);
+    return map;
+  }, [locations]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  const value = useMemo(
-    () => ({ gardens, plants, platforms, locations, refresh, mutate }),
-    [gardens, plants, platforms, locations, refresh, mutate],
-  );
-
   return (
-    <DataContext value={value}>
+    <DataContext value={{ gardens, plants, platforms, locations, locationsByPlatform, locationsByPlant, locationsById, refresh, mutate }}>
       {children}
     </DataContext>
   );

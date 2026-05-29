@@ -28,7 +28,7 @@ function fillLabel(pct: number): string {
 }
 
 export default function Dashboard() {
-  const { gardens, platforms, locations, plants } = useData();
+  const { gardens, platforms, locations, plants, locationsByPlatform, locationsByPlant } = useData();
 
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
@@ -69,9 +69,7 @@ export default function Dashboard() {
   const fillPct = totalCapacity > 0 ? Math.round((totalPlants / totalCapacity) * 100) : 0;
   const totalPlatforms = platforms?.length ?? 0;
   const fullPlatforms = (platforms ?? []).filter((p) => {
-    const used = round2((locations ?? [])
-      .filter((l) => l.platform_id === p.id)
-      .reduce((s, l) => s + l.quantity, 0));
+    const used = round2((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
     return p.capacity > 0 && used >= p.capacity;
   }).length;
   const totalGardens = gardens?.length ?? 0;
@@ -79,7 +77,7 @@ export default function Dashboard() {
   // ── Top plants ──
   const plantStats = (plants ?? [])
     .map((p) => {
-      const batches = (locations ?? []).filter((l) => l.plant_id === p.id);
+      const batches = locationsByPlant.get(p.id) ?? [];
       const total = round2(batches.reduce((s, l) => s + l.quantity, 0));
       const platformCount = new Set(batches.map((b) => b.platform_id)).size;
       const maxPrice = round2(batches.reduce((m, l) => Math.max(m, l.price ?? 0), 0));
@@ -242,9 +240,7 @@ export default function Dashboard() {
                     );
 
                     const renderCell = (p: (typeof floorPlatforms)[0]) => {
-                      const used = round2((locations ?? [])
-                        .filter((l) => l.platform_id === p.id)
-                        .reduce((s, l) => s + l.quantity, 0));
+                      const used = round2((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
                       const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
                       const isActive = tooltipId === p.id;
                       return (
@@ -272,7 +268,7 @@ export default function Dashboard() {
                       );
                     };
 
-                    const available = round2((locations ?? []).filter((l) => floorPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))
+                    const available = round2(floorPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))
                     const total = round2(floorPlatforms.reduce((s, p) => s + p.capacity, 0))
 
                     return (
@@ -307,7 +303,7 @@ export default function Dashboard() {
                   <div className="text-[11px] text-gray-400 font-medium text-right">
                     Tổng
                     <Badge variant="secondary" className="h-4">{gardenPlatforms.length} sàn</Badge>
-                    <Badge variant="default" className="h-4">{round2((locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - (locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))})</b>&nbsp; tấm</Badge>
+                    <Badge variant="default" className="h-4">{round2(gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))})</b>&nbsp; tấm</Badge>
                   </div>
                 )}
               </>
@@ -421,9 +417,7 @@ export default function Dashboard() {
         (() => {
           const p = platforms?.find((pl) => pl.id === tooltipId);
           if (!p) return null;
-          const used = round2((locations ?? [])
-            .filter((l) => l.platform_id === p.id)
-            .reduce((s, l) => s + l.quantity, 0));
+          const used = round2((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
           const pct =
             p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
           const tooltipW = 208; // w-52 = 13rem = 208px
@@ -463,7 +457,7 @@ export default function Dashboard() {
                 </span>
                 <span>·</span>
                 <span>
-                  {new Set((locations ?? []).filter((l) => l.platform_id === p.id).map((l) => l.plant_id)).size} cây
+                  {new Set((locationsByPlatform.get(p.id) ?? []).map((l) => l.plant_id)).size} cây
                 </span>
                 <span
                   className="font-semibold"
@@ -481,9 +475,7 @@ export default function Dashboard() {
               </div>
 
               {(() => {
-                const platformLocs = (locations ?? []).filter(
-                  (l) => l.platform_id === p.id,
-                );
+                const platformLocs = locationsByPlatform.get(p.id) ?? [];
                 if (platformLocs.length === 0)
                   return (
                     <p className="text-[11px] text-gray-300 text-center py-1">

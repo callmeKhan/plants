@@ -24,10 +24,10 @@ interface Garden {
 }
 
 interface PlatformGridModalProps {
+  locationsByPlatform: Map<string, PlantLocation[]>
   open: boolean;
   onClose: () => void;
   platforms: Platform[] | undefined;
-  locations: PlantLocation[] | undefined;
   gardens: Garden[] | undefined;
   moveTargetGardenId: string;
   moveTargetFloor: number | "";
@@ -42,10 +42,10 @@ interface PlatformGridModalProps {
 }
 
 export function PlatformGridModal({
+  locationsByPlatform,
   open,
   onClose,
   platforms,
-  locations,
   gardens,
   moveTargetGardenId,
   moveTargetFloor,
@@ -69,9 +69,7 @@ export function PlatformGridModal({
   const platformOptions = floorPlatforms.map((p) => {
     const freeSlots = round2(
       p.capacity -
-        (locations ?? [])
-          .filter((l) => l.platform_id === p.id)
-          .reduce((s, l) => s + l.quantity, 0)
+        (locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0)
     );
 
     return {

@@ -15,7 +15,7 @@ export function SellCartBar() {
   const [expanded, setExpanded] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  const { locations, plants, platforms, gardens, mutate, refresh } = useData();
+  const { locationsById, plants, platforms, gardens, mutate, refresh } = useData();
 
   if (sellCart.length === 0) return null;
 
@@ -32,7 +32,7 @@ export function SellCartBar() {
       const plantQtyAgg = new Map<string, number>();
 
       for (const [locId, qty] of byLoc) {
-        const loc = locations.find((l) => l.id === locId);
+        const loc = locationsById.get(locId);
         if (!loc) continue;
         const plant = plants?.find((p) => p.id === loc.plant_id);
         const sellAmt = Math.min(qty, loc.quantity);
@@ -92,7 +92,7 @@ export function SellCartBar() {
         {expanded && (
           <div className="px-4 pt-3 pb-1 max-h-56 overflow-y-auto space-y-1 border-b border-gray-50">
             {sellCart.map((c, idx) => {
-              const loc = locations.find((l) => l.id === c.locId);
+              const loc = locationsById.get(c.locId);
               const plant = loc ? plants?.find((p) => p.id === loc.plant_id) : null;
               const pf = loc ? platforms?.find((p) => p.id === loc.platform_id) : null;
               const g = pf ? gardens?.find((gl) => gl.id === pf.garden_id) : null;
@@ -145,7 +145,7 @@ export function SellCartBar() {
                 `Xác nhận bán ${totalQty} tấm (${sellCart.length} đợt)?
 
                 ${sellCart.map((c) => {
-                  const loc = locations.find((l) => l.id === c.locId);
+                  const loc = locationsById.get(c.locId);
                   const plant = loc ? plants?.find((p) => p.id === loc.plant_id) : null;
                   const pf = loc ? platforms?.find((p) => p.id === loc.platform_id) : null;
                   const g = pf ? gardens?.find((gl) => gl.id === pf.garden_id) : null;

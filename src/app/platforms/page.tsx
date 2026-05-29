@@ -58,7 +58,7 @@ function PlatformsPageInner() {
     setExpandedFloors(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const { gardens, platforms, locations, refresh, mutate } = useData();
+  const { gardens, platforms, locationsByPlatform, locationsByPlant, refresh, mutate } = useData();
 
   async function handleAddGarden(e: React.FormEvent) {
     e.preventDefault();
@@ -80,7 +80,7 @@ function PlatformsPageInner() {
     const pts = platforms.filter((p) => p.garden_id === id);
     const deletedPlantIds = new Set<string>();
     for (const p of pts) {
-      const locs = locations.filter((l) => l.platform_id === p.id);
+      const locs = locationsByPlatform.get(p.id) ?? [];
       for (const loc of locs) {
         deletedPlantIds.add(loc.plant_id);
         await fetch(`/api/plant-locations?id=${loc.id}`, { method: "DELETE" });
@@ -89,7 +89,7 @@ function PlatformsPageInner() {
     }
     await fetch(`/api/gardens?id=${id}`, { method: "DELETE" });
     for (const plantId of deletedPlantIds) {
-      const remaining = locations.filter((l) => l.plant_id === plantId && !pts.some((p) => p.id === l.platform_id)).length;
+      const remaining = (locationsByPlant.get(plantId) ?? []).filter((l) => !pts.some((p) => p.id === l.platform_id)).length;
       if (remaining === 0) {
         await fetch(`/api/plants?id=${plantId}`, { method: "DELETE" });
       }
@@ -100,9 +100,7 @@ function PlatformsPageInner() {
 
   function handleDeleteGarden(id: string, gardenName: string) {
     const gardenPlatformIds = platforms.filter((p) => p.garden_id === id).map((p) => p.id);
-    const plantCount = locations
-      .filter((l) => gardenPlatformIds.includes(l.platform_id))
-      .reduce((s, l) => s + l.quantity, 0);
+    const plantCount = gardenPlatformIds.reduce((s, pid) => s + (locationsByPlatform.get(pid) ?? []).reduce((a, l) => a + l.quantity, 0), 0);
     openConfirm(
       `Xoá vườn "${gardenName}"?\nHiện có ${plantCount} tấm đang được trồng trong vườn này.`,
       () => doDeleteGarden(id)
@@ -139,14 +137,14 @@ function PlatformsPageInner() {
   }
 
   async function doDeletePlatform(id: string) {
-    const locs = locations.filter((l) => l.platform_id === id);
+    const locs = locationsByPlatform.get(id) ?? [];
     const deletedPlantIds = new Set(locs.map((l) => l.plant_id));
     for (const loc of locs) {
       await fetch(`/api/plant-locations?id=${loc.id}`, { method: "DELETE" });
     }
     await fetch(`/api/platforms?id=${id}`, { method: "DELETE" });
     for (const plantId of deletedPlantIds) {
-      const remaining = locations.filter((l) => l.plant_id === plantId && l.platform_id !== id).length;
+      const remaining = (locationsByPlant.get(plantId) ?? []).filter((l) => l.platform_id !== id).length;
       if (remaining === 0) {
         await fetch(`/api/plants?id=${plantId}`, { method: "DELETE" });
       }
@@ -156,9 +154,7 @@ function PlatformsPageInner() {
   }
 
   function handleDelete(id: string, platformName: string) {
-    const plantCount = locations
-      .filter((l) => l.platform_id === id)
-      .reduce((s, l) => s + l.quantity, 0);
+    const plantCount = (locationsByPlatform.get(id) ?? []).reduce((s, l) => s + l.quantity, 0);
     openConfirm(
       `Xoá sàn "${platformName}"?\nHiện có ${plantCount} tấm đang được trồng trên sàn này.`,
       () => doDeletePlatform(id)
@@ -325,7 +321,7 @@ function PlatformsPageInner() {
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#16a34a" }} />
                       <span className="font-bold text-gray-800 text-sm">
                         {g.name} &nbsp;  &nbsp;
-                        {floors.length > 1 && <Badge variant="default" className="h-4">{round2((locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - (locations ?? []).filter((l) => gardenPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))})</b>&nbsp; tấm</Badge>}
+                        {floors.length > 1 && <Badge variant="default" className="h-4">{round2(gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))})</b>&nbsp; tấm</Badge>}
 
                       </span>
                     </div>
@@ -334,7 +330,7 @@ function PlatformsPageInner() {
                       const floorKey = `${g.id}-${floorNum}`;
                       const isExpanded = expandedFloors[floorKey];
 
-                      const available = round2((locations ?? []).filter((l) => floorPlatforms.some((p) => p.id === l.platform_id)).reduce((s, l) => s + l.quantity, 0))
+                      const available = round2(floorPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))
                       const total = round2(floorPlatforms.reduce((s, p) => s + p.capacity, 0))
                       return (
                         <div key={floorNum} className="pl-4 border-l-2 border-gray-100 space-y-1.5 mb-4">
@@ -363,9 +359,7 @@ function PlatformsPageInner() {
                                     {col.items
                                       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
                                       .map((p) => {
-                                        const used = locations
-                                          .filter((l) => l.platform_id === p.id)
-                                          .reduce((s, l) => s + l.quantity, 0);
+                                        const used = (locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0);
                                         const free = round2(p.capacity - used);
                                         const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
                                         return (
