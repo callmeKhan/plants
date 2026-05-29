@@ -108,10 +108,10 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
-  const { plants, locations, platforms, gardens, mutate, refresh } = useData();
+  const { plants, locations, platforms, gardens, locationsByPlatform, locationsByPlant, locationsById, mutate, refresh } = useData();
 
   const plant = plants.find((p) => p.id === plantId);
-  const batches = locations.filter((l) => l.plant_id === plantId);
+  const batches = locationsByPlant.get(plantId) ?? [];
 
   if (!plant) return null;
 
@@ -230,7 +230,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
         ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
         ...(editStatus ? { status: editStatus } : { status: undefined }),
       };
-      const batch = locations.find((l) => l.id === batchId);
+      const batch = locationsById.get(batchId)
       const locRes = await fetch(`/api/plant-locations?id=${batchId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -475,7 +475,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                                 .filter((p) => {
                                   if (!editPlatformSearch.trim()) return true;
                                   const q = editPlatformSearch.toLowerCase();
-                                  const free = p.capacity - (locations.filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                                  const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
                                   const g = gardens?.find((g) => g.id === p.garden_id)?.name ?? "";
                                   return `${g} tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
                                 })
@@ -487,7 +487,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                                   return a.name.localeCompare(b.name, undefined, { numeric: true });
                                 })
                                 .map((p) => {
-                                  const free = p.capacity - (locations.filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                                  const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
                                   const g = gardens?.find((g) => g.id === p.garden_id)?.name;
                                   const label = `${g ? g + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${round2(free)})`;
                                   return (

@@ -138,7 +138,7 @@ function PlantsPageInner() {
   }, []);
 
 
-  const { plants, gardens, platforms, locations, mutate } = useData();
+  const { plants, gardens, platforms, locations, locationsByPlatform, locationsByPlant, mutate } = useData();
 
   function floorsForGarden(gardenId: string) {
     return Array.from(new Set(
@@ -203,9 +203,7 @@ function PlantsPageInner() {
 
     const platform = platforms?.find((p) => p.id === platformId);
     if (!platform) { setMsg({ text: "Không tìm thấy sàn", type: "error" }); return; }
-    const usedCap = (locations ?? [])
-      .filter((l) => l.platform_id === platformId)
-      .reduce((s, l) => s + l.quantity, 0);
+    const usedCap = (locationsByPlatform.get(platformId) ?? []).reduce((s, l) => s + l.quantity, 0);
     if (usedCap + qty > platform.capacity) {
       setMsg({ text: `Vượt sức chứa: đã dùng ${usedCap} + ${qty} > cap ${platform.capacity}`, type: "error" });
       return;
@@ -249,7 +247,7 @@ function PlantsPageInner() {
   function platformLabel(id: string) {
     const p = platforms?.find((p) => p.id === id);
     if (!p) return id;
-    const used = (locations ?? []).filter((l) => l.platform_id === id).reduce((s, l) => s + l.quantity, 0);
+    const used = (locationsByPlatform.get(id) ?? []).reduce((s, l) => s + l.quantity, 0);
     return `S\u00e0n ${p.name} (${p.capacity - used})`;
   }
 
@@ -272,19 +270,19 @@ function PlantsPageInner() {
   }
   if (filterStock === "out_of_stock") {
     plantIds = plantIds.filter((pid) => {
-      const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+      const batches = locationsByPlant.get(pid) ?? [];
       return batches.length === 0;
     });
   }
   if (filterPotSize.length > 0) {
     plantIds = plantIds.filter((pid) => {
-      const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+      const batches = locationsByPlant.get(pid) ?? [];
       return batches.some((b) => filterPotSize.includes(b.pot_size));
     });
   }
   if (filterStatus) {
     plantIds = plantIds.filter((pid) => {
-      const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+      const batches = locationsByPlant.get(pid) ?? [];
       return batches.some((b) => b.status === filterStatus);
     });
   }
@@ -397,7 +395,7 @@ function PlantsPageInner() {
                     <PotSizeInput
                       value={potSize}
                       onChange={setPotSize}
-                      usedSizes={(locations ?? []).map((l) => l.pot_size)}
+                      usedSizes={locations.map((l) => l.pot_size)}
                     />
                   </div>
                   <Input
@@ -448,7 +446,7 @@ function PlantsPageInner() {
                           .filter((p) => {
                             if (!platformSearch.trim()) return true;
                             const q = platformSearch.toLowerCase();
-                            const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                            const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
                             const label = `tầng ${p.floor} ${p.name} ${free}`;
                             return label.toLowerCase().includes(q);
                           })
@@ -462,7 +460,7 @@ function PlantsPageInner() {
                             return a.name.localeCompare(b.name, undefined, { numeric: true });
                           })
                           .map((p) => {
-                            const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                            const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
                             const label = filterFloor ? `${p.name} (còn ${free})` : `${gardens?.find((g) => g.id === p.garden_id)?.name + " | "}Tầng ${p.floor} - ${p.name} (${round2(free)})`;
                             return (
                               <li
@@ -477,7 +475,7 @@ function PlantsPageInner() {
                         {(filteredPlatforms ?? []).filter((p) => {
                           if (!platformSearch.trim()) return true;
                           const q = platformSearch.toLowerCase();
-                          const free = p.capacity - ((locations ?? []).filter((l) => l.platform_id === p.id).reduce((s, l) => s + l.quantity, 0));
+                          const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
                           return `tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
                         }).length === 0 && (
                             <li className="px-3 py-2 text-gray-400 text-center">Không tìm thấy</li>
@@ -726,7 +724,7 @@ function PlantsPageInner() {
             )}
             {plantIds.map((pid) => {
               const plant = plants?.find((p) => p.id === pid);
-              const batches = (locations ?? []).filter((l) => l.plant_id === pid);
+              const batches = locationsByPlant.get(pid) ?? [];
               const total = round2(batches.reduce((s, l) => s + l.quantity, 0));
               return (
                 <button
