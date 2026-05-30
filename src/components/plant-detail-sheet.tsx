@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
+import { normalizeBatchColor } from "@/lib/batch-color";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PlantImage } from "@/components/plant-image";
@@ -185,7 +186,8 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
         b.pot_size === editPotSize &&
         b.planted_date === editDate &&
         (targetPrice ? b.price === targetPrice : true) &&
-        (targetStatus ? b.status === targetStatus : true)
+        (targetStatus ? b.status === targetStatus : true) &&
+        normalizeBatchColor(b.color) === normalizeBatchColor(currentBatch.color)
       );
 
       if (existingBatch) {

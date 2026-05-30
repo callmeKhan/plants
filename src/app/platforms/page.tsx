@@ -7,6 +7,11 @@ import { useData } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
 import { Input } from "@/components/ui/input";
 import { round2 } from "@/lib/number";
+import {
+  BATCH_COLOR_META,
+  PLATFORM_HIGHLIGHT_BATCH_COLORS,
+  normalizeBatchColor,
+} from "@/lib/batch-color";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -359,9 +364,13 @@ function PlatformsPageInner() {
                                     {col.items
                                       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
                                       .map((p) => {
-                                        const used = (locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0);
+                                        const platformLocs = locationsByPlatform.get(p.id) ?? [];
+                                        const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
                                         const free = round2(p.capacity - used);
                                         const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
+                                        const highlightColors = PLATFORM_HIGHLIGHT_BATCH_COLORS.filter((color) =>
+                                          platformLocs.some((loc) => normalizeBatchColor(loc.color) === color)
+                                        );
                                         return (
                                           <div
                                             key={p.id}
@@ -371,7 +380,23 @@ function PlatformsPageInner() {
                                             <Card className="hover:shadow-md hover:border-blue-200 transition-all duration-200 active:scale-[0.99]">
                                               <CardContent className="py-2.5 px-3">
                                                 <div className="flex items-center justify-between mb-2">
-                                                  <span className="font-semibold text-gray-900 text-sm truncate mr-1">{p.name}</span>
+                                                  <div className="flex items-center gap-1.5 min-w-0 mr-1">
+                                                    <span className="font-semibold text-gray-900 text-sm truncate">{p.name}</span>
+                                                    {highlightColors.map((color) => {
+                                                      const colorMeta = BATCH_COLOR_META[color];
+                                                      return (
+                                                        <span
+                                                          key={color}
+                                                          className="w-2.5 h-2.5 rounded-full border shadow-sm shrink-0"
+                                                          style={{
+                                                            backgroundColor: colorMeta.backgroundColor,
+                                                            borderColor: colorMeta.borderColor,
+                                                          }}
+                                                          title={`Có đợt đánh dấu ${colorMeta.label}`}
+                                                        />
+                                                      );
+                                                    })}
+                                                  </div>
                                                   <div className="flex items-center gap-1 shrink-0">
                                                     <Badge variant={free === 0 ? "warning" : "secondary"} className="text-[10px] px-1.5 py-0 h-5">
                                                       {round2(free)}/{p.capacity}

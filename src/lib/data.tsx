@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import type { BatchColor } from "@/lib/batch-color";
 
 // ── Types (moved from db.ts) ──
 
@@ -32,6 +33,7 @@ export interface PlantLocation {
   pot_size: number;
   planted_date: string;
   sort_order: number;
+  color: BatchColor;
   price?: number;
   status?: string;
 }

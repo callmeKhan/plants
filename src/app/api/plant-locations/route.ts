@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { round2 } from "@/lib/number";
+import { isBatchColor, normalizeBatchColor } from "@/lib/batch-color";
 
 async function nextSortOrder(platformId: string) {
   const { data, error } = await supabase
@@ -26,7 +27,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { plant_id, platform_id, quantity, pot_size, planted_date, price, status, sort_order } = body;
+    const { plant_id, platform_id, quantity, pot_size, planted_date, price, status, sort_order, color } = body;
 
     if (!plant_id || !platform_id || quantity == null) {
       return NextResponse.json(
@@ -34,6 +35,12 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    if (color != null && !isBatchColor(color)) {
+      return NextResponse.json({ error: "color must be white, yellow, or red" }, { status: 400 });
+    }
+
+    const locationColor = normalizeBatchColor(color);
 
     // Merge only if same plant + platform + pot_size + planted_date
     const { data: existing, error: existingError } = await supabase
@@ -43,6 +50,7 @@ export async function POST(request: Request) {
       .eq("platform_id", platform_id)
       .eq("pot_size", pot_size || 14)
       .eq("planted_date", planted_date || "")
+      .eq("color", locationColor)
       .maybeSingle();
 
     if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
@@ -71,6 +79,7 @@ export async function POST(request: Request) {
         pot_size: pot_size || 14,
         planted_date: planted_date || "",
         sort_order: locationSortOrder,
+        color: locationColor,
         ...(price != null ? { price } : {}),
         ...(status ? { status } : {}),
       }])
@@ -92,17 +101,22 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
-    const { quantity, pot_size, planted_date, platform_id, plant_id, price, status, sort_order } = body;
+    const { quantity, pot_size, planted_date, platform_id, plant_id, price, status, sort_order, color } = body;
+
+    if (color != null && !isBatchColor(color)) {
+      return NextResponse.json({ error: "color must be white, yellow, or red" }, { status: 400 });
+    }
 
     const { data: current, error: currentError } = await supabase
       .from("plant_locations")
-      .select("platform_id, sort_order")
+      .select("platform_id, sort_order, color")
       .eq("id", id)
       .single();
 
     if (currentError) return NextResponse.json({ error: currentError.message }, { status: 500 });
 
     const targetPlatformId = platform_id ?? current.platform_id;
+    const locationColor = color == null ? normalizeBatchColor(current.color) : color;
     const locationSortOrder =
       typeof sort_order === "number"
         ? sort_order
@@ -119,6 +133,7 @@ export async function PUT(request: Request) {
         platform_id: targetPlatformId,
         plant_id,
         sort_order: locationSortOrder,
+        color: locationColor,
         price: price ?? null,
         status: status || null,
       })
@@ -133,12 +148,74 @@ export async function PUT(request: Request) {
   }
 }
 
-// PATCH /api/plant-locations — reorder all plant locations on a platform
+// PATCH /api/plant-locations — reorder or recolor plant locations on a platform
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
     const platformId = body.platform_id;
     const orderedIds = body.ordered_ids;
+    const colorUpdates = body.color_updates;
+
+    if (typeof platformId === "string" && Array.isArray(colorUpdates)) {
+      const hasValidColorUpdates = colorUpdates.every(
+        (update) =>
+          update &&
+          typeof update === "object" &&
+          typeof update.id === "string" &&
+          isBatchColor(update.color)
+      );
+
+      if (!hasValidColorUpdates) {
+        return NextResponse.json(
+          { error: "color_updates must contain unique ids with white, yellow, or red colors" },
+          { status: 400 }
+        );
+      }
+
+      if (colorUpdates.length === 0) return NextResponse.json([]);
+
+      const updateIds = colorUpdates.map((update) => update.id);
+      if (new Set(updateIds).size !== updateIds.length) {
+        return NextResponse.json(
+          { error: "color_updates must contain unique ids with white, yellow, or red colors" },
+          { status: 400 }
+        );
+      }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("plant_locations")
+        .select("id")
+        .eq("platform_id", platformId)
+        .in("id", updateIds);
+
+      if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+      if ((existing ?? []).length !== updateIds.length) {
+        return NextResponse.json(
+          { error: "Each color update must belong to the requested platform" },
+          { status: 400 }
+        );
+      }
+
+      const updateResults = await Promise.all(
+        colorUpdates.map((update) =>
+          supabase
+            .from("plant_locations")
+            .update({ color: update.color })
+            .eq("id", update.id)
+            .eq("platform_id", platformId)
+        )
+      );
+      const updateError = updateResults.find((result) => result.error)?.error;
+      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+      const { data, error } = await supabase
+        .from("plant_locations")
+        .select("*")
+        .in("id", updateIds);
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(data);
+    }
 
     if (typeof platformId !== "string" || !Array.isArray(orderedIds) || !orderedIds.every((id) => typeof id === "string")) {
       return NextResponse.json(

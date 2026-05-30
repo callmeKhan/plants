@@ -150,11 +150,13 @@ Nếu **không có env vars**, app hoạt động hoàn toàn offline với Inde
   "plant_id": "string",
   "platform_id": "string",
   "quantity": "number",
-  "sort_order": "number"
+  "sort_order": "number",
+  "color": "white | yellow | red"
 }
 ```
 
 For existing Supabase databases, apply `supabase-plant-locations-sort-order.sql` before relying on saved batch ordering.
+Apply `supabase-plant-locations-color.sql` before using batch color markers.
 
 #### `sync_queue`
 
@@ -199,7 +201,7 @@ Sync worker chạy mỗi 30 giây + tự động sync khi thiết bị online tr
 | ----------------- | ----------------------------------- |
 | `plants`          | id, name, total_quantity, image_url |
 | `platforms`       | id, floor, side, name, capacity     |
-| `plant_locations` | id, plant_id, platform_id, quantity, sort_order |
+| `plant_locations` | id, plant_id, platform_id, quantity, sort_order, color |
 
 ---
 
@@ -370,7 +372,8 @@ create table if not exists plant_locations (
   quantity integer not null,
   pot_size integer default 14,
   planted_date text default '',
-  sort_order integer not null default 0
+  sort_order integer not null default 0,
+  color text not null default 'white' check (color in ('white', 'yellow', 'red'))
 );
 
 create table if not exists gardens (

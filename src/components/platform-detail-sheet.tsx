@@ -21,13 +21,19 @@ import Link from "next/link";
 import { useData, type PlantLocation } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
 import { round2 } from "@/lib/number";
+import {
+  BATCH_COLORS,
+  BATCH_COLOR_META,
+  normalizeBatchColor,
+  type BatchColor,
+} from "@/lib/batch-color";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
   X, Pencil, Check, Package, Leaf, Plus, Trash2,
-  DollarSign, GripVertical, ListOrdered,
+  DollarSign, GripVertical, ListOrdered, Palette,
 } from "lucide-react";
 import { PlatformGridModal } from "@/components/platform-grid-modal";
 import { PlantImage } from "@/components/plant-image";
@@ -73,11 +79,11 @@ function SortableBatchShell({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id, disabled });
+  } = useSortable({ id, disabled, transition: null });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition: isDragging ? "none" : transition,
+    transition: isDragging ? "none" : transition ?? undefined,
     zIndex: isDragging ? 20 : undefined,
     opacity: isDragging ? 0.85 : undefined,
     touchAction: disabled ? undefined : "pan-y",
@@ -140,6 +146,11 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [isReordering, setIsReordering] = useState(false);
   const [draftOrder, setDraftOrder] = useState<string[]>([]);
   const [savingOrder, setSavingOrder] = useState(false);
+
+  // Mark batches with colors
+  const [isEditingColors, setIsEditingColors] = useState(false);
+  const [draftColors, setDraftColors] = useState<Record<string, BatchColor>>({});
+  const [savingColors, setSavingColors] = useState(false);
 
   const { platforms, gardens, plants, locationsByPlatform, locationsById, mutate, refresh } = useData();
 
@@ -258,7 +269,8 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       l.pot_size === loc.pot_size &&
       l.planted_date === loc.planted_date &&
       (l.price ?? null) === (loc.price ?? null) &&
-      (l.status ?? null) === (loc.status ?? null)
+      (l.status ?? null) === (loc.status ?? null) &&
+      normalizeBatchColor(l.color) === normalizeBatchColor(loc.color)
     );
 
     try {
@@ -301,6 +313,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         const newLoc = {
           id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
           quantity: qty, pot_size: loc.pot_size, planted_date: loc.planted_date,
+          color: normalizeBatchColor(loc.color),
           ...(loc.price != null ? { price: loc.price } : {}),
           ...(loc.status ? { status: loc.status } : {}),
         };
@@ -409,6 +422,47 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     }
   }
 
+  function getBatchColorUpdates() {
+    return platformLocs
+      .map((loc) => ({
+        id: loc.id,
+        color: draftColors[loc.id] ?? normalizeBatchColor(loc.color),
+      }))
+      .filter((update) => {
+        const loc = locationsById.get(update.id);
+        return loc && normalizeBatchColor(loc.color) !== update.color;
+      });
+  }
+
+  async function saveBatchColors() {
+    const colorUpdates = getBatchColorUpdates();
+
+    if (colorUpdates.length === 0) {
+      setIsEditingColors(false);
+      return;
+    }
+
+    setSavingColors(true);
+    try {
+      const res = await fetch("/api/plant-locations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform_id: platformId, color_updates: colorUpdates }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save colors");
+      const updatedLocations = await res.json() as PlantLocation[];
+      updatedLocations.forEach((loc) => mutate.upsertLocation(loc));
+      setIsEditingColors(false);
+      setToast({ text: "Đã lưu màu đánh dấu", type: "success" });
+    } catch {
+      await refresh("locations");
+      setToast({ text: "Lỗi lưu màu đánh dấu", type: "error" });
+    } finally {
+      setSavingColors(false);
+    }
+  }
+
   function handleToggleReorder() {
     if (!detailPlatform) return;
     if (savingOrder) return;
@@ -435,6 +489,38 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     openConfirm(
       `Lưu thứ tự ${activeOrder.length} đợt trồng trên sàn "${detailPlatform.name}"?`,
       () => { void saveBatchOrder(); }
+    );
+  }
+
+  function handleToggleColorEditing() {
+    if (!detailPlatform) return;
+    if (isReordering || savingOrder || savingColors) return;
+
+    if (!isEditingColors) {
+      setSellingLocId(null);
+      setSellQty("");
+      setMovingLocId(null);
+      setMoveTargetPlatformId("");
+      setMoveQty("");
+      setMoveTargetGardenId("");
+      setMoveTargetFloor("");
+      setShowPlatformGridModal(false);
+      setDraftColors(Object.fromEntries(
+        platformLocs.map((loc) => [loc.id, normalizeBatchColor(loc.color)])
+      ));
+      setIsEditingColors(true);
+      return;
+    }
+
+    const colorUpdates = getBatchColorUpdates();
+    if (colorUpdates.length === 0) {
+      setIsEditingColors(false);
+      return;
+    }
+
+    openConfirm(
+      `Lưu màu đánh dấu cho ${colorUpdates.length} đợt trồng trên sàn "${detailPlatform.name}"?`,
+      () => { void saveBatchColors(); }
     );
   }
 
@@ -512,12 +598,27 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                 <button
                   type="button"
                   className={`w-10 h-8 rounded-full flex items-center justify-center transition-colors ${
+                    isEditingColors
+                      ? "bg-amber-400 text-white"
+                      : "bg-gray-100 text-gray-500 hover:text-gray-700"
+                  } disabled:opacity-40 disabled:hover:text-gray-500`}
+                  onClick={handleToggleColorEditing}
+                  disabled={isReordering || savingOrder || savingColors || (!isEditingColors && platformLocs.length === 0)}
+                  aria-pressed={isEditingColors}
+                  aria-label={isEditingColors ? "Đóng chỉnh màu đánh dấu" : "Chỉnh màu đánh dấu"}
+                  title={isEditingColors ? "Đóng chỉnh màu đánh dấu" : "Chỉnh màu đánh dấu"}
+                >
+                  <Palette className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  className={`w-10 h-8 rounded-full flex items-center justify-center transition-colors ${
                     isReordering
                       ? "bg-blue-600 text-white"
                       : "bg-gray-100 text-gray-500 hover:text-gray-700"
                   } disabled:opacity-40 disabled:hover:text-gray-500`}
                   onClick={handleToggleReorder}
-                  disabled={savingOrder || (!isReordering && platformLocs.length < 2)}
+                  disabled={savingOrder || savingColors || isEditingColors || (!isReordering && platformLocs.length < 2)}
                   aria-pressed={isReordering}
                   aria-label={isReordering ? "Lưu thứ tự đợt trồng" : "Sắp xếp đợt trồng"}
                   title={isReordering ? "Lưu thứ tự đợt trồng" : "Sắp xếp đợt trồng"}
@@ -618,6 +719,10 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                         const inCartQty = cartQtyByLoc(loc.id);
                         const effectiveQty = round2(loc.quantity - inCartQty);
                         const fullySold = effectiveQty <= 0;
+                        const batchColor = isEditingColors
+                          ? draftColors[loc.id] ?? normalizeBatchColor(loc.color)
+                          : normalizeBatchColor(loc.color);
+                        const batchColorMeta = BATCH_COLOR_META[batchColor];
                         const mapStatusIcons: Record<string, { text: string, bg_color: string }> = {
                           "trồng lại": {
                             text: '🌱',
@@ -655,11 +760,21 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                 </span>
                               </div>
                             )}
+                            {batchColor !== "white" && (
+                              <span
+                                className="absolute -right-1 -top-1 z-10 w-3.5 h-3.5 rounded-full border shadow-sm"
+                                style={{
+                                  backgroundColor: batchColorMeta.backgroundColor,
+                                  borderColor: batchColorMeta.borderColor,
+                                }}
+                                title={`Màu đánh dấu: ${batchColorMeta.label}`}
+                              />
+                            )}
                           </div>
                           <div
-                            className={`flex-1 min-w-0 ${isReordering ? "cursor-default" : "cursor-pointer"}`}
+                            className={`flex-1 min-w-0 ${isReordering || isEditingColors ? "cursor-default" : "cursor-pointer"}`}
                             onClick={() => {
-                              if (!isReordering) onShowPlantDetail?.(loc.plant_id, loc.id, plant?.name ?? loc.plant_id);
+                              if (!isReordering && !isEditingColors) onShowPlantDetail?.(loc.plant_id, loc.id, plant?.name ?? loc.plant_id);
                             }}
                           >
                             <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
@@ -691,7 +806,33 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                               <GripVertical className="w-4 h-4" />
                             </button>
                           )}
-                          {!isReordering && (
+                          {isEditingColors && (
+                            <div className="flex items-center gap-2 shrink-0 pr-1">
+                              {BATCH_COLORS.map((color) => {
+                                const colorMeta = BATCH_COLOR_META[color];
+                                const isSelected = color === batchColor;
+                                return (
+                                  <button
+                                    key={color}
+                                    type="button"
+                                    className={`w-7 h-7 rounded-full border shadow-sm transition-all ${
+                                      isSelected ? "ring-2 ring-blue-400 ring-offset-1" : ""
+                                    } disabled:opacity-40`}
+                                    style={{
+                                      backgroundColor: colorMeta.backgroundColor,
+                                      borderColor: colorMeta.borderColor,
+                                    }}
+                                    disabled={savingColors}
+                                    aria-label={`Đánh dấu ${colorMeta.label}`}
+                                    aria-pressed={isSelected}
+                                    title={colorMeta.label}
+                                    onClick={() => setDraftColors((current) => ({ ...current, [loc.id]: color }))}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                          {!isReordering && !isEditingColors && (
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -749,7 +890,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                         </div>
 
                         {/* Inline sell UI */}
-                        {!isReordering && isSelling && (
+                        {!isReordering && !isEditingColors && isSelling && (
                           <div className="space-y-2 rounded-lg bg-emerald-50 p-2">
                             <div className="flex items-center gap-2">
                               <label className="text-xs text-emerald-800 shrink-0">Số lượng bán:</label>
@@ -793,7 +934,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                         )}
 
                         {/* Inline move UI */}
-                        {!isReordering && isMoving && (
+                        {!isReordering && !isEditingColors && isMoving && (
                           <div className="space-y-2">
                             {/* Garden + Floor selects */}
                             <div className="flex gap-2">
