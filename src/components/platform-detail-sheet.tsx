@@ -722,7 +722,13 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                         const batchColor = isEditingColors
                           ? draftColors[loc.id] ?? normalizeBatchColor(loc.color)
                           : normalizeBatchColor(loc.color);
-                        const batchColorMeta = BATCH_COLOR_META[batchColor];
+                        const batchColorRowClass = batchColor === "yellow"
+                          ? "bg-yellow-50"
+                          : batchColor === "red"
+                            ? "bg-red-50"
+                            : isReordering
+                              ? "bg-white"
+                              : "";
                         const mapStatusIcons: Record<string, { text: string, bg_color: string }> = {
                           "trồng lại": {
                             text: '🌱',
@@ -741,7 +747,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                             key={loc.id}
                             id={loc.id}
                             disabled={!isReordering}
-                            className={`relative rounded-xl py-2.5 space-y-2 ${isReordering ? "min-h-[48px] w-[75%] px-3 bg-white shadow-sm" : "pl-3 pr-0 transition-colors duration-200"} ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}
+                            className={`relative rounded-xl py-2.5 space-y-2 ${batchColorRowClass} ${isReordering ? "min-h-[48px] w-[75%] px-3 shadow-sm" : "pl-3 pr-0 transition-colors duration-200"} ${loc.id === highlightBatchId ? "border-2 border-green-200" : "border border-transparent"} ${fullySold ? "opacity-40" : ""}`}
                           >
                             {({ attributes, listeners, setActivatorNodeRef, isDragging }) => (
                               <>
@@ -759,16 +765,6 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                                   {statusIcon.text}
                                 </span>
                               </div>
-                            )}
-                            {batchColor !== "white" && (
-                              <span
-                                className="absolute -right-1 -top-1 z-10 w-3.5 h-3.5 rounded-full border shadow-sm"
-                                style={{
-                                  backgroundColor: batchColorMeta.backgroundColor,
-                                  borderColor: batchColorMeta.borderColor,
-                                }}
-                                title={`Màu đánh dấu: ${batchColorMeta.label}`}
-                              />
                             )}
                           </div>
                           <div

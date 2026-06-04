@@ -415,7 +415,7 @@ function PlatformsPageInner() {
                                                     className="h-full rounded-full transition-all"
                                                     style={{
                                                       width: `${pct}%`,
-                                                      backgroundColor: pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
+                                                      backgroundColor: pct == 100 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
                                                     }}
                                                   />
                                                 </div>
