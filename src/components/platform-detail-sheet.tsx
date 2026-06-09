@@ -21,12 +21,14 @@ import Link from "next/link";
 import { useData, type PlantLocation } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
 import { round2 } from "@/lib/number";
+import { currentDateString } from "@/lib/time";
 import {
   BATCH_COLORS,
   BATCH_COLOR_META,
   normalizeBatchColor,
   type BatchColor,
 } from "@/lib/batch-color";
+import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/components/ui/confirm-modal";
@@ -247,6 +249,9 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     if (!loc) return;
     const targetPlatform = platforms?.find((p) => p.id === moveTargetPlatformId);
     if (!targetPlatform) return;
+    const targetForcedStatus = getSpecialPlatformStatus(targetPlatform);
+    const targetStatus = targetForcedStatus ?? loc.status ?? null;
+    const targetPlantedDate = targetForcedStatus ? currentDateString() : loc.planted_date;
 
     const qty = round2(Number(moveQty) || loc.quantity);
 
@@ -267,9 +272,9 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       l.id !== locId &&
       l.plant_id === loc.plant_id &&
       l.pot_size === loc.pot_size &&
-      l.planted_date === loc.planted_date &&
+      l.planted_date === targetPlantedDate &&
       (l.price ?? null) === (loc.price ?? null) &&
-      (l.status ?? null) === (loc.status ?? null) &&
+      (targetForcedStatus ?? l.status ?? null) === targetStatus &&
       normalizeBatchColor(l.color) === normalizeBatchColor(loc.color)
     );
 
@@ -279,7 +284,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         const mergeRes = await fetch(`/api/plant-locations?id=${matchingBatch.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...matchingBatch, quantity: mergedQty }),
+          body: JSON.stringify({ ...matchingBatch, quantity: mergedQty, planted_date: targetPlantedDate }),
         });
         if (mergeRes.ok) mutate.upsertLocation(await mergeRes.json());
 
@@ -299,7 +304,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         const moveRes = await fetch(`/api/plant-locations?id=${locId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...loc, platform_id: moveTargetPlatformId }),
+          body: JSON.stringify({ ...loc, platform_id: moveTargetPlatformId, planted_date: targetPlantedDate, status: targetStatus }),
         });
         if (moveRes.ok) mutate.upsertLocation(await moveRes.json());
       } else {
@@ -312,10 +317,10 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
         if (origRes.ok) mutate.upsertLocation(await origRes.json());
         const newLoc = {
           id: uuidv4(), plant_id: loc.plant_id, platform_id: moveTargetPlatformId,
-          quantity: qty, pot_size: loc.pot_size, planted_date: loc.planted_date,
+          quantity: qty, pot_size: loc.pot_size, planted_date: targetPlantedDate,
           color: normalizeBatchColor(loc.color),
           ...(loc.price != null ? { price: loc.price } : {}),
-          ...(loc.status ? { status: loc.status } : {}),
+          ...(targetStatus ? { status: targetStatus } : {}),
         };
         const newRes = await fetch("/api/plant-locations", {
           method: "POST",

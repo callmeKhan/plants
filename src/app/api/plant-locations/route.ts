@@ -3,6 +3,23 @@ import { supabase } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { round2 } from "@/lib/number";
 import { isBatchColor, normalizeBatchColor } from "@/lib/batch-color";
+import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
+import { currentDateString } from "@/lib/time";
+
+function normalizeStatus(status: unknown) {
+  return typeof status === "string" && status.trim() ? status.trim() : null;
+}
+
+async function getForcedStatusForPlatform(platformId: string) {
+  const { data, error } = await supabase
+    .from("platforms")
+    .select("name")
+    .eq("id", platformId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return getSpecialPlatformStatus(data);
+}
 
 async function nextSortOrder(platformId: string) {
   const { data, error } = await supabase
@@ -41,6 +58,8 @@ export async function POST(request: Request) {
     }
 
     const locationColor = normalizeBatchColor(color);
+    const forcedStatus = await getForcedStatusForPlatform(platform_id);
+    const locationStatus = forcedStatus ?? normalizeStatus(status);
 
     // Merge only if same plant + platform + pot_size + planted_date
     const { data: existing, error: existingError } = await supabase
@@ -57,9 +76,12 @@ export async function POST(request: Request) {
 
     if (existing) {
       const newQty = round2(existing.quantity + quantity);
+      const updates = forcedStatus
+        ? { quantity: newQty, status: locationStatus }
+        : { quantity: newQty };
       const { data, error } = await supabase
         .from("plant_locations")
-        .update({ quantity: newQty })
+        .update(updates)
         .eq("id", existing.id)
         .select()
         .single();
@@ -81,7 +103,7 @@ export async function POST(request: Request) {
         sort_order: locationSortOrder,
         color: locationColor,
         ...(price != null ? { price } : {}),
-        ...(status ? { status } : {}),
+        ...(locationStatus ? { status: locationStatus } : {}),
       }])
       .select()
       .single();
@@ -102,6 +124,8 @@ export async function PUT(request: Request) {
   try {
     const body = await request.json();
     const { quantity, pot_size, planted_date, platform_id, plant_id, price, status, sort_order, color } = body;
+    const hasStatus = Object.prototype.hasOwnProperty.call(body, "status");
+    const hasPlantedDate = Object.prototype.hasOwnProperty.call(body, "planted_date");
 
     if (color != null && !isBatchColor(color)) {
       return NextResponse.json({ error: "color must be white, yellow, or red" }, { status: 400 });
@@ -109,7 +133,7 @@ export async function PUT(request: Request) {
 
     const { data: current, error: currentError } = await supabase
       .from("plant_locations")
-      .select("platform_id, sort_order, color")
+      .select("platform_id, planted_date, sort_order, color, status")
       .eq("id", id)
       .single();
 
@@ -117,6 +141,14 @@ export async function PUT(request: Request) {
 
     const targetPlatformId = platform_id ?? current.platform_id;
     const locationColor = color == null ? normalizeBatchColor(current.color) : color;
+    const forcedStatus = await getForcedStatusForPlatform(targetPlatformId);
+    const isMovingToSpecialPlatform = Boolean(forcedStatus) && targetPlatformId !== current.platform_id;
+    const locationStatus = forcedStatus ?? (hasStatus ? normalizeStatus(status) : normalizeStatus(current.status));
+    const locationPlantedDate = isMovingToSpecialPlatform
+      ? currentDateString()
+      : hasPlantedDate
+        ? planted_date || ""
+        : current.planted_date;
     const locationSortOrder =
       typeof sort_order === "number"
         ? sort_order
@@ -129,13 +161,13 @@ export async function PUT(request: Request) {
       .update({
         quantity,
         pot_size,
-        planted_date,
+        planted_date: locationPlantedDate,
         platform_id: targetPlatformId,
         plant_id,
         sort_order: locationSortOrder,
         color: locationColor,
         price: price ?? null,
-        status: status || null,
+        status: locationStatus,
       })
       .eq("id", id)
       .select()

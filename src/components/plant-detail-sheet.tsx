@@ -3,7 +3,9 @@
 import { useState, useCallback } from "react";
 import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
+import { currentDateString } from "@/lib/time";
 import { normalizeBatchColor } from "@/lib/batch-color";
+import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PlantImage } from "@/components/plant-image";
@@ -176,17 +178,23 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     if (!newQty || !editPlatformId || !plant) return;
 
     const currentBatch = batches.find((b) => b.id === batchId);
+    const targetPlatform = platforms?.find((p) => p.id === editPlatformId);
+    const targetForcedStatus = getSpecialPlatformStatus(targetPlatform);
+    const targetStatus = targetForcedStatus ?? (editStatus || null);
+    const targetPlantedDate = targetForcedStatus && currentBatch && editPlatformId !== currentBatch.platform_id
+      ? currentDateString()
+      : editDate;
+
     if (currentBatch) {
       const targetPrice = editPrice ? Number(editPrice) : undefined;
-      const targetStatus = editStatus || undefined;
 
       const existingBatch = batches.find((b) =>
         b.id !== batchId &&
         b.platform_id === editPlatformId &&
         b.pot_size === editPotSize &&
-        b.planted_date === editDate &&
+        b.planted_date === targetPlantedDate &&
         (targetPrice ? b.price === targetPrice : true) &&
-        (targetStatus ? b.status === targetStatus : true) &&
+        (targetForcedStatus ?? b.status ?? null) === targetStatus &&
         normalizeBatchColor(b.color) === normalizeBatchColor(currentBatch.color)
       );
 
@@ -197,7 +205,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
           const mergeRes = await fetch(`/api/plant-locations?id=${existingBatch.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...existingBatch, quantity: mergedQty }),
+            body: JSON.stringify({ ...existingBatch, quantity: mergedQty, planted_date: targetPlantedDate }),
           });
           const delRes = await fetch(`/api/plant-locations?id=${batchId}`, { method: "DELETE" });
           if (mergeRes.ok) mutate.upsertLocation(await mergeRes.json());
@@ -228,9 +236,9 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     // No merge needed — standard update
     try {
       const updates = {
-        quantity: newQty, pot_size: editPotSize, planted_date: editDate, platform_id: editPlatformId,
+        quantity: newQty, pot_size: editPotSize, planted_date: targetPlantedDate, platform_id: editPlatformId,
         ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
-        ...(editStatus ? { status: editStatus } : { status: undefined }),
+        status: targetStatus,
       };
       const batch = locationsById.get(batchId)
       const locRes = await fetch(`/api/plant-locations?id=${batchId}`, {
