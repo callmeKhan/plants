@@ -271,10 +271,11 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     const matchingBatch = targetLocs.find((l) =>
       l.id !== locId &&
       l.plant_id === loc.plant_id &&
+      l.platform_id === moveTargetPlatformId &&
       l.pot_size === loc.pot_size &&
       l.planted_date === targetPlantedDate &&
       (l.price ?? null) === (loc.price ?? null) &&
-      (targetForcedStatus ?? l.status ?? null) === targetStatus &&
+      (l.status ?? null) === targetStatus &&
       normalizeBatchColor(l.color) === normalizeBatchColor(loc.color)
     );
 

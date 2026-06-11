@@ -186,15 +186,16 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
       : editDate;
 
     if (currentBatch) {
-      const targetPrice = editPrice ? Number(editPrice) : undefined;
+      const targetPrice = editPrice ? Number(editPrice) : null;
 
       const existingBatch = batches.find((b) =>
         b.id !== batchId &&
+        b.plant_id === currentBatch.plant_id &&
         b.platform_id === editPlatformId &&
         b.pot_size === editPotSize &&
         b.planted_date === targetPlantedDate &&
-        (targetPrice ? b.price === targetPrice : true) &&
-        (targetForcedStatus ?? b.status ?? null) === targetStatus &&
+        (b.price ?? null) === targetPrice &&
+        (b.status ?? null) === targetStatus &&
         normalizeBatchColor(b.color) === normalizeBatchColor(currentBatch.color)
       );
 

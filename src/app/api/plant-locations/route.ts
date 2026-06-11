@@ -60,16 +60,29 @@ export async function POST(request: Request) {
     const locationColor = normalizeBatchColor(color);
     const forcedStatus = await getForcedStatusForPlatform(platform_id);
     const locationStatus = forcedStatus ?? normalizeStatus(status);
+    const locationPrice = price ?? null;
+    const locationPotSize = pot_size || 14;
+    const locationPlantedDate = planted_date || "";
 
-    // Merge only if same plant + platform + pot_size + planted_date
-    const { data: existing, error: existingError } = await supabase
+    // Merge only if same plant + platform + pot_size + planted_date + color + status + price
+    let existingQuery = supabase
       .from("plant_locations")
       .select("id, quantity")
       .eq("plant_id", plant_id)
       .eq("platform_id", platform_id)
-      .eq("pot_size", pot_size || 14)
-      .eq("planted_date", planted_date || "")
-      .eq("color", locationColor)
+      .eq("pot_size", locationPotSize)
+      .eq("planted_date", locationPlantedDate)
+      .eq("color", locationColor);
+
+    existingQuery = locationStatus == null
+      ? existingQuery.is("status", null)
+      : existingQuery.eq("status", locationStatus);
+
+    existingQuery = locationPrice == null
+      ? existingQuery.is("price", null)
+      : existingQuery.eq("price", locationPrice);
+
+    const { data: existing, error: existingError } = await existingQuery
       .maybeSingle();
 
     if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
@@ -98,11 +111,11 @@ export async function POST(request: Request) {
         plant_id,
         platform_id,
         quantity,
-        pot_size: pot_size || 14,
-        planted_date: planted_date || "",
+        pot_size: locationPotSize,
+        planted_date: locationPlantedDate,
         sort_order: locationSortOrder,
         color: locationColor,
-        ...(price != null ? { price } : {}),
+        ...(locationPrice != null ? { price: locationPrice } : {}),
         ...(locationStatus ? { status: locationStatus } : {}),
       }])
       .select()
