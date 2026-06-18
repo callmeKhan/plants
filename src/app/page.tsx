@@ -4,7 +4,9 @@ import { useData } from "@/lib/data";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { round2 } from "@/lib/number";
+import { getPlatformCapacityStats } from "@/lib/platform-capacity";
 import { Badge } from "@/components/ui/badge";
+import { PlatformCapacityBadge } from "@/components/platform-capacity-badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { MonthlySalesChart } from "@/components/monthly-sales-chart";
 import { PlantImage } from "@/components/plant-image";
@@ -65,7 +67,7 @@ export default function Dashboard() {
 
   // ── Derived stats ──
   const totalPlants = round2((locations ?? []).reduce((s, l) => s + l.quantity, 0));
-  const totalCapacity = round2((platforms ?? []).reduce((s, p) => s + p.capacity, 0));
+  const totalCapacity = getPlatformCapacityStats(platforms ?? [], locationsByPlatform).total;
   const fillPct = totalCapacity > 0 ? Math.round((totalPlants / totalCapacity) * 100) : 0;
   const totalPlatforms = platforms?.length ?? 0;
   const fullPlatforms = (platforms ?? []).filter((p) => {
@@ -268,15 +270,16 @@ export default function Dashboard() {
                       );
                     };
 
-                    const available = round2(floorPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))
-                    const total = round2(floorPlatforms.reduce((s, p) => s + p.capacity, 0))
-
                     return (
                       <div key={floorNum}>
                         <span className="text-[11px] text-gray-400 font-medium w-8 pt-1.5 shrink-0">
                           Tầng {floorNum}
                           <Badge variant="secondary" className="h-4">{floorPlatforms.length} sàn</Badge>
-                          <Badge variant="default" className="h-4">{available}/{total} &nbsp;<b>({round2(total - available)})</b>&nbsp; tấm</Badge>
+                          <PlatformCapacityBadge
+                            platforms={floorPlatforms}
+                            locationsByPlatform={locationsByPlatform}
+                            className="h-4"
+                          />
                         </span>
                         <div className="flex-1 flex divide-x divide-gray-200">
                           {tPlatforms.length > 0 && (
@@ -303,7 +306,11 @@ export default function Dashboard() {
                   <div className="text-[11px] text-gray-400 font-medium text-right">
                     Tổng
                     <Badge variant="secondary" className="h-4">{gardenPlatforms.length} sàn</Badge>
-                    <Badge variant="default" className="h-4">{round2(gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))})</b>&nbsp; tấm</Badge>
+                    <PlatformCapacityBadge
+                      platforms={gardenPlatforms}
+                      locationsByPlatform={locationsByPlatform}
+                      className="h-4"
+                    />
                   </div>
                 )}
               </>

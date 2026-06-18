@@ -7,6 +7,7 @@ import { useData } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
 import { Input } from "@/components/ui/input";
 import { round2 } from "@/lib/number";
+import { getPlatformCapacityStats, isHangingPlatform } from "@/lib/platform-capacity";
 import {
   BATCH_COLOR_META,
   PLATFORM_HIGHLIGHT_BATCH_COLORS,
@@ -15,6 +16,7 @@ import {
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PlatformCapacityBadge } from "@/components/platform-capacity-badge";
 import { Trees, LayoutGrid, Trash2, Plus, ChevronDown } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
@@ -211,7 +213,7 @@ function PlatformsPageInner() {
                 {gardens?.map((g) => {
                   const gardenPlatformIds = platforms.filter((p) => p.garden_id === g.id).map((p) => p.id);
                   const gardenPlatformsArr = platforms.filter((p) => p.garden_id === g.id);
-                  const totalCapacity = round2(gardenPlatformsArr.reduce((s, p) => s + p.capacity, 0));
+                  const totalCapacity = getPlatformCapacityStats(gardenPlatformsArr, locationsByPlatform).total;
                   const platformCount = gardenPlatformIds.length;
                   return (
                     <Card key={g.id} className="shrink-0">
@@ -326,17 +328,121 @@ function PlatformsPageInner() {
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#16a34a" }} />
                       <span className="font-bold text-gray-800 text-sm">
                         {g.name} &nbsp;  &nbsp;
-                        {floors.length > 1 && <Badge variant="default" className="h-4">{round2(gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))}/{round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0))} &nbsp;<b>({round2(gardenPlatforms.reduce((s, p) => s + p.capacity, 0) - gardenPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))})</b>&nbsp; tấm</Badge>}
-
+                        {floors.length > 1 && (
+                          <PlatformCapacityBadge
+                            platforms={gardenPlatforms}
+                            locationsByPlatform={locationsByPlatform}
+                            className="h-4"
+                          />
+                        )}
                       </span>
                     </div>
                     {floors.map((floorNum) => {
                       const floorPlatforms = gardenPlatforms.filter((p) => p.floor === floorNum);
                       const floorKey = `${g.id}-${floorNum}`;
                       const isExpanded = expandedFloors[floorKey];
+                      const treoPlatforms = floorPlatforms.filter((p) =>
+                        p.name.toLocaleUpperCase("vi").startsWith("TREO")
+                      );
+                      const sideColumns = [
+                        {
+                          key: "T",
+                          label: "Trái",
+                          items: floorPlatforms.filter((p) => {
+                            const nameKey = p.name.toLocaleUpperCase("vi");
+                            return nameKey.startsWith("T") && !nameKey.startsWith("TREO");
+                          }),
+                        },
+                        {
+                          key: "P",
+                          label: "Phải",
+                          items: floorPlatforms.filter((p) => p.name.toLocaleUpperCase("vi").startsWith("P")),
+                        },
+                        {
+                          key: "Khác",
+                          label: "Khác",
+                          items: floorPlatforms.filter((p) => {
+                            const nameKey = p.name.toLocaleUpperCase("vi");
+                            return !nameKey.startsWith("T") && !nameKey.startsWith("P") && !nameKey.startsWith("TREO");
+                          }),
+                        },
+                      ].filter((col) => col.items.length > 0);
+                      const renderPlatformCard = (p: typeof floorPlatforms[number]) => {
+                        const platformLocs = locationsByPlatform.get(p.id) ?? [];
+                        const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
+                        const free = round2(p.capacity - used);
+                        const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
+                        const highlightColors = PLATFORM_HIGHLIGHT_BATCH_COLORS.filter((color) =>
+                          platformLocs.some((loc) => normalizeBatchColor(loc.color) === color)
+                        );
 
-                      const available = round2(floorPlatforms.reduce((s, p) => s + (locationsByPlatform.get(p.id) ?? []).reduce((a, l) => a + l.quantity, 0), 0))
-                      const total = round2(floorPlatforms.reduce((s, p) => s + p.capacity, 0))
+                        return (
+                          <div
+                            key={p.id}
+                            className="w-full text-left cursor-pointer"
+                            onClick={() => open({ type: "platform", id: p.id, label: `${g.name} | Tầng ${floorNum} - ${p.name}` })}
+                          >
+                            <Card className="hover:shadow-md hover:border-blue-200 transition-all duration-200 active:scale-[0.99]">
+                              <CardContent className="py-2.5 px-3">
+                                <div className="flex items-center justify-between shrink-0">
+                                  <div className="flex items-center gap-1.5 min-w-0 mr-1">
+                                    <span className="font-semibold text-gray-900 text-sm truncate">{p.name}</span>
+                                    {highlightColors.map((color) => {
+                                      const colorMeta = BATCH_COLOR_META[color];
+                                      return (
+                                        <span
+                                          key={color}
+                                          className="w-2.5 h-2.5 rounded-full border shadow-sm shrink-0"
+                                          style={{
+                                            backgroundColor: colorMeta.backgroundColor,
+                                            borderColor: colorMeta.borderColor,
+                                          }}
+                                          title={`Có đợt đánh dấu ${colorMeta.label}`}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                  {isHangingPlatform(p) ? (
+                                    <div className="w-45/100 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all"
+                                      style={{
+                                        width: `${pct}%`,
+                                        backgroundColor: pct == 100 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
+                                      }}
+                                    />
+                                  </div>
+                                  ): <></>}
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Badge variant={free === 0 ? "warning" : "secondary"} className="text-[10px] px-1.5 py-0 h-5">
+                                      {isHangingPlatform(p) ? round2(p.capacity - free) : `${round2(free)}/${p.capacity}`}
+                                    </Badge>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }}
+                                      className="w-6 h-6 rounded-md flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                                {/* Capacity bar */}
+                                {!isHangingPlatform(p) ? (
+                                  <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mt-2">
+                                  <div
+                                    className="h-full rounded-full transition-all"
+                                    style={{
+                                      width: `${pct}%`,
+                                      backgroundColor: pct == 100 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
+                                    }}
+                                  />
+                                </div>
+                                ) : <></>}
+                              </CardContent>
+                            </Card>
+                          </div>
+                        );
+                      };
+
                       return (
                         <div key={floorNum} className="pl-4 border-l-2 border-gray-100 space-y-1.5 mb-4">
                           <button
@@ -349,83 +455,33 @@ function PlatformsPageInner() {
                             />
                             Tầng {floorNum}
                             <Badge variant="secondary" className="h-4">{floorPlatforms.length} sàn</Badge>
-                            <Badge variant="default" className="h-4">{available}/{total} &nbsp;<b>({round2(total - available)})</b>&nbsp; tấm</Badge>
+                            <PlatformCapacityBadge
+                              platforms={floorPlatforms}
+                              locationsByPlatform={locationsByPlatform}
+                              className="h-4"
+                            />
                           </button>
                           <Collapse open={!!isExpanded}>
-                            <div className="flex gap-3 items-start">
-                              {[
-                                { prefix: 'T', items: floorPlatforms.filter(p => p.name.toUpperCase().startsWith('T')) },
-                                { prefix: 'P', items: floorPlatforms.filter(p => p.name.toUpperCase().startsWith('P')) },
-                                { prefix: 'Khác', items: floorPlatforms.filter(p => !p.name.toUpperCase().startsWith('T') && !p.name.toUpperCase().startsWith('P')) }
-                              ].filter(col => col.items.length > 0)
-                                .map((col) => (
-                                  <div key={col.prefix} className="flex-1 min-w-0 space-y-1.5">
-                                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">{col.prefix === 'T' ? "Trái" : "Phải"}</h3>
-                                    {col.items
-                                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-                                      .map((p) => {
-                                        const platformLocs = locationsByPlatform.get(p.id) ?? [];
-                                        const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
-                                        const free = round2(p.capacity - used);
-                                        const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
-                                        const highlightColors = PLATFORM_HIGHLIGHT_BATCH_COLORS.filter((color) =>
-                                          platformLocs.some((loc) => normalizeBatchColor(loc.color) === color)
-                                        );
-                                        return (
-                                          <div
-                                            key={p.id}
-                                            className="w-full text-left cursor-pointer"
-                                            onClick={() => open({ type: "platform", id: p.id, label: `${g.name} | Tầng ${floorNum} - ${p.name}` })}
-                                          >
-                                            <Card className="hover:shadow-md hover:border-blue-200 transition-all duration-200 active:scale-[0.99]">
-                                              <CardContent className="py-2.5 px-3">
-                                                <div className="flex items-center justify-between mb-2">
-                                                  <div className="flex items-center gap-1.5 min-w-0 mr-1">
-                                                    <span className="font-semibold text-gray-900 text-sm truncate">{p.name}</span>
-                                                    {highlightColors.map((color) => {
-                                                      const colorMeta = BATCH_COLOR_META[color];
-                                                      return (
-                                                        <span
-                                                          key={color}
-                                                          className="w-2.5 h-2.5 rounded-full border shadow-sm shrink-0"
-                                                          style={{
-                                                            backgroundColor: colorMeta.backgroundColor,
-                                                            borderColor: colorMeta.borderColor,
-                                                          }}
-                                                          title={`Có đợt đánh dấu ${colorMeta.label}`}
-                                                        />
-                                                      );
-                                                    })}
-                                                  </div>
-                                                  <div className="flex items-center gap-1 shrink-0">
-                                                    <Badge variant={free === 0 ? "warning" : "secondary"} className="text-[10px] px-1.5 py-0 h-5">
-                                                      {round2(free)}/{p.capacity}
-                                                    </Badge>
-                                                    <button
-                                                      onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }}
-                                                      className="w-6 h-6 rounded-md flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors shrink-0"
-                                                    >
-                                                      <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                  </div>
-                                                </div>
-                                                {/* Capacity bar */}
-                                                <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                                  <div
-                                                    className="h-full rounded-full transition-all"
-                                                    style={{
-                                                      width: `${pct}%`,
-                                                      backgroundColor: pct == 100 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#10b981",
-                                                    }}
-                                                  />
-                                                </div>
-                                              </CardContent>
-                                            </Card>
-                                          </div>
-                                        );
-                                      })}
-                                  </div>
-                                ))}
+                            <div className="space-y-3">
+                              {treoPlatforms.length > 0 && (
+                                <div className="w-full space-y-1.5">
+                                  {treoPlatforms
+                                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+                                    .map(renderPlatformCard)}
+                                </div>
+                              )}
+                              {sideColumns.length > 0 && (
+                                <div className="flex gap-3 items-start">
+                                  {sideColumns.map((col) => (
+                                    <div key={col.key} className="flex-1 min-w-0 space-y-1.5">
+                                      <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">{col.label}</h3>
+                                      {col.items
+                                        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+                                        .map(renderPlatformCard)}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </Collapse>
                         </div>
