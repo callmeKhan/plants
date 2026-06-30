@@ -38,9 +38,16 @@ export interface PlantLocation {
   status?: string;
 }
 
+export interface PlantSale {
+  id: string;
+  plant_id: string;
+  quantity: number;
+  created_at: string;
+}
+
 // ── Context ──
 
-export type Resource = "gardens" | "plants" | "platforms" | "locations";
+export type Resource = "gardens" | "plants" | "platforms" | "locations" | "sales";
 
 interface Mutate {
   upsertGarden: (g: Garden) => void;
@@ -51,6 +58,7 @@ interface Mutate {
   removePlatform: (id: string) => void;
   upsertLocation: (l: PlantLocation) => void;
   removeLocation: (id: string) => void;
+  upsertPlantSale: (s: PlantSale) => void;
 }
 
 interface DataContextType {
@@ -58,9 +66,11 @@ interface DataContextType {
   plants: Plant[];
   platforms: Platform[];
   locations: PlantLocation[];
+  plantSales: PlantSale[];
   locationsByPlatform: Map<string, PlantLocation[]>;
   locationsByPlant: Map<string, PlantLocation[]>;
   locationsById: Map<string, PlantLocation>;
+  salesByPlant: Map<string, PlantSale[]>;
   refresh: (...resources: Resource[]) => Promise<void>;
   mutate: Mutate;
 }
@@ -71,6 +81,7 @@ const defaultMutate: Mutate = {
   upsertPlant: noop, removePlant: noop,
   upsertPlatform: noop, removePlatform: noop,
   upsertLocation: noop, removeLocation: noop,
+  upsertPlantSale: noop,
 };
 
 const DataContext = createContext<DataContextType>({
@@ -78,9 +89,11 @@ const DataContext = createContext<DataContextType>({
   plants: [],
   platforms: [],
   locations: [],
+  plantSales: [],
   locationsByPlatform: new Map(),
   locationsByPlant: new Map(),
   locationsById: new Map(),
+  salesByPlant: new Map(),
   refresh: async () => {},
   mutate: defaultMutate,
 });
@@ -90,21 +103,24 @@ const RESOURCE_CONFIG = {
   plants: { url: "/api/plants" },
   platforms: { url: "/api/platforms" },
   locations: { url: "/api/plant-locations" },
+  sales: { url: "/api/plant-sales" },
 } as const;
 
-const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations"];
+const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales"];
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [plants, setPlants] = useState<Plant[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [locations, setLocations] = useState<PlantLocation[]>([]);
+  const [plantSales, setPlantSales] = useState<PlantSale[]>([]);
 
   const setters = useMemo<Record<Resource, (data: never[]) => void>>(() => ({
     gardens: setGardens,
     plants: setPlants,
     platforms: setPlatforms,
     locations: setLocations,
+    sales: setPlantSales,
   }), []);
 
   const refresh = useCallback(async (...resources: Resource[]) => {
@@ -137,6 +153,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       removePlatform: remove(setPlatforms),
       upsertLocation: upsert(setLocations),
       removeLocation: remove(setLocations),
+      upsertPlantSale: upsert(setPlantSales),
     };
   }, []);
 
@@ -170,12 +187,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return map;
   }, [locations]);
 
+  const salesByPlant = useMemo(() => {
+    const map = new Map<string, PlantSale[]>();
+    for (const sale of plantSales) {
+      const arr = map.get(sale.plant_id);
+      if (arr) arr.push(sale); else map.set(sale.plant_id, [sale]);
+    }
+    return map;
+  }, [plantSales]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   return (
-    <DataContext value={{ gardens, plants, platforms, locations, locationsByPlatform, locationsByPlant, locationsById, refresh, mutate }}>
+    <DataContext value={{ gardens, plants, platforms, locations, plantSales, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, refresh, mutate }}>
       {children}
     </DataContext>
   );

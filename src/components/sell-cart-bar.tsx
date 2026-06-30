@@ -7,6 +7,7 @@ import { round2 } from "@/lib/number";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
+import type { PlantSale } from "@/lib/data";
 
 export function SellCartBar() {
   const sellCart = useSellCart();
@@ -23,9 +24,6 @@ export function SellCartBar() {
     if (sellCart.length === 0 || processing) return;
     setProcessing(true);
     try {
-      let cattAdd = 0;
-      let tonghopAdd = 0;
-
       const byLoc = new Map<string, number>();
       for (const c of sellCart) byLoc.set(c.locId, (byLoc.get(c.locId) ?? 0) + c.qty);
 
@@ -34,12 +32,8 @@ export function SellCartBar() {
       for (const [locId, qty] of byLoc) {
         const loc = locationsById.get(locId);
         if (!loc) continue;
-        const plant = plants?.find((p) => p.id === loc.plant_id);
         const sellAmt = Math.min(qty, loc.quantity);
         plantQtyAgg.set(loc.plant_id, (plantQtyAgg.get(loc.plant_id) ?? 0) + sellAmt);
-
-        if (plant && plant.name.toLowerCase().includes("catt")) cattAdd += sellAmt;
-        else tonghopAdd += sellAmt;
 
         if (sellAmt >= loc.quantity) {
           const delRes = await fetch(`/api/plant-locations?id=${locId}`, { method: "DELETE" });
@@ -67,12 +61,28 @@ export function SellCartBar() {
         if (res.ok) mutate.upsertPlant(await res.json());
       }
 
-      const totalSold = cattAdd + tonghopAdd;
+      const saleRows = [...plantQtyAgg.entries()].map(([plantId, soldQty]) => ({
+        plant_id: plantId,
+        quantity: round2(soldQty),
+      }));
+      if (saleRows.length > 0) {
+        const saleRes = await fetch("/api/plant-sales", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sales: saleRows }),
+        });
+        if (!saleRes.ok) throw new Error("Failed to save plant sale records");
+
+        const savedSales = (await saleRes.json()) as PlantSale[];
+        for (const sale of savedSales) mutate.upsertPlantSale(sale);
+      }
+
+      const totalSold = [...plantQtyAgg.values()].reduce((sum, qty) => sum + qty, 0);
       sellCartStore.clear();
       setExpanded(false);
-      setToast({ text: `Thêm ${round2(totalSold)} tấm!`, type: "success" });
+      setToast({ text: `Đã bán ${round2(totalSold)} tấm!`, type: "success" });
     } catch {
-      await refresh("plants", "locations");
+      await refresh("plants", "locations", "sales");
       setToast({ text: "Lỗi kết nối", type: "error" });
     } finally {
       setProcessing(false);

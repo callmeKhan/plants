@@ -24,6 +24,8 @@ import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { PlatformDetailSheet } from "@/components/platform-detail-sheet";
 import { Collapse } from "@/components/ui/collapse";
 import { PlantImage } from "@/components/plant-image";
+import { PLANT_LOCATION_STATUSES, getPlantLocationStatusMeta } from "@/lib/plant-location-status";
+import { getBatchColorRowClass } from "@/lib/batch-color";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -632,7 +634,7 @@ function PlantsPageInner() {
                 {/* Status filter */}
                 <div>
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Trạng thái batch</p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => setFilterStatus("")}
                       className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
@@ -643,26 +645,19 @@ function PlantsPageInner() {
                     >
                       Tất cả
                     </button>
-                    <button
-                      onClick={() => setFilterStatus("trồng lại")}
-                      className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
-                      style={{
-                        backgroundColor: filterStatus === "trồng lại" ? "#f59e0b" : "#f3f4f6",
-                        color: filterStatus === "trồng lại" ? "#fff" : "#6b7280",
-                      }}
-                    >
-                      🌱 Trồng lại
-                    </button>
-                    <button
-                      onClick={() => setFilterStatus("sang chậu")}
-                      className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
-                      style={{
-                        backgroundColor: filterStatus === "sang chậu" ? "#2563eb" : "#f3f4f6",
-                        color: filterStatus === "sang chậu" ? "#fff" : "#6b7280",
-                      }}
-                    >
-                      🪴 Sang chậu
-                    </button>
+                    {PLANT_LOCATION_STATUSES.map((status) => (
+                      <button
+                        key={status.value}
+                        onClick={() => setFilterStatus(status.value)}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                        style={{
+                          backgroundColor: filterStatus === status.value ? status.filterActiveBgColor : "#f3f4f6",
+                          color: filterStatus === status.value ? "#fff" : "#6b7280",
+                        }}
+                      >
+                        {status.icon} {status.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -748,29 +743,38 @@ function PlantsPageInner() {
                         </div>
                         {batches.length > 0 && (
                           <div className="space-y-1">
-                            {batches.map((b) => (
-                              <div key={b.id} className="text-xs text-gray-500 flex flex-wrap items-start gap-x-1 gap-y-0 border-b border-gray-200">
-                                {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
-                                <div className="flex flex-col">
-                                  <span>{platformLabelWithGarden(b.platform_id)}</span>
-                                  <span>{b.quantity} tấm, chậu {b.pot_size}</span>
+                            {batches.map((b) => {
+                              const statusMeta = getPlantLocationStatusMeta(b.status);
+                              const batchColorRowClass = getBatchColorRowClass(b.color);
+                              return (
+                                <div
+                                  key={b.id}
+                                  className={`text-xs text-gray-500 flex flex-wrap items-start gap-x-1 gap-y-0  border-b border-gray-200 px-2 py-1 ${
+                                    batchColorRowClass ? `${batchColorRowClass} border-transparent` : "border-gray-100"
+                                  }`}
+                                >
+                                  {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
+                                  <div className="flex flex-col">
+                                    <span>{platformLabelWithGarden(b.platform_id)}</span>
+                                    <span>{b.quantity} tấm, chậu {b.pot_size}</span>
+                                  </div>
+                                  <div className="flex flex-col items-center gap-1 ml-auto">
+                                    {statusMeta && (
+                                      <span
+                                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
+                                        style={{
+                                          backgroundColor: statusMeta.badgeBgColor,
+                                          color: statusMeta.badgeTextColor,
+                                        }}
+                                      >
+                                        {statusMeta.icon && `${statusMeta.icon} `}{statusMeta.label}
+                                      </span>
+                                    )}
+                                    <span className="text-gray-900 text-xs">{fmtDate(b.planted_date)}</span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1 ml-auto">
-                                  {b.status && (
-                                    <span
-                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
-                                      style={{
-                                        backgroundColor: b.status === 'sang chậu' ? '#dbeafe' : '#fef3c7',
-                                        color: b.status === 'sang chậu' ? '#1d4ed8' : '#92400e',
-                                      }}
-                                    >
-                                      {b.status === 'sang chậu' ? '🪴' : '🌱'} {b.status}
-                                    </span>
-                                  )}
-                                  <span className="text-gray-900 text-xs">{fmtDate(b.planted_date)}</span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

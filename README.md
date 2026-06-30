@@ -157,6 +157,18 @@ Nếu **không có env vars**, app hoạt động hoàn toàn offline với Inde
 
 For existing Supabase databases, apply `supabase-plant-locations-sort-order.sql` before relying on saved batch ordering.
 Apply `supabase-plant-locations-color.sql` before using batch color markers.
+Apply `supabase-plant-sales.sql` before using per-plant sale history.
+
+#### `plant_sales`
+
+```json
+{
+  "id": "string",
+  "plant_id": "string",
+  "quantity": "number",
+  "created_at": "string"
+}
+```
 
 #### `sync_queue`
 
@@ -202,6 +214,7 @@ Sync worker chạy mỗi 30 giây + tự động sync khi thiết bị online tr
 | `plants`          | id, name, total_quantity, image_url |
 | `platforms`       | id, floor, side, name, capacity     |
 | `plant_locations` | id, plant_id, platform_id, quantity, sort_order, color |
+| `plant_sales`     | id, plant_id, quantity, created_at  |
 
 ---
 
@@ -233,6 +246,8 @@ Google Sheets không có transaction / lock, nên dùng:
 | POST   | `/api/platforms`       | Tạo platform mới                   |
 | DELETE | `/api/platforms?id=x`  | Xoá platform                       |
 | POST   | `/api/plant-locations` | Gán cây vào platform (có validate) |
+| GET    | `/api/plant-sales`     | Danh sách lượt bán cây             |
+| POST   | `/api/plant-sales`     | Lưu lượt bán cây                   |
 
 ---
 
@@ -374,6 +389,13 @@ create table if not exists plant_locations (
   planted_date text default '',
   sort_order integer not null default 0,
   color text not null default 'white' check (color in ('white', 'yellow', 'red'))
+);
+
+create table if not exists plant_sales (
+  id text primary key,
+  plant_id text references plants(id) on delete cascade,
+  quantity numeric not null check (quantity > 0),
+  created_at timestamptz not null default now()
 );
 
 create table if not exists gardens (

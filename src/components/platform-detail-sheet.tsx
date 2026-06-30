@@ -29,6 +29,7 @@ import {
   type BatchColor,
 } from "@/lib/batch-color";
 import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
+import { getPlantLocationStatusMeta } from "@/lib/plant-location-status";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/components/ui/confirm-modal";
@@ -735,19 +736,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                             : isReordering
                               ? "bg-white"
                               : "";
-                        const mapStatusIcons: Record<string, { text: string, bg_color: string }> = {
-                          "trồng lại": {
-                            text: '🌱',
-                            bg_color: 'rgba(255, 237, 164, 1)',
-                          },
-                          "sang chậu": {
-                            text: '🪴',
-                            bg_color: 'rgba(162, 203, 255, 1)',
-                          }
-                        }
-                        const statusIcon = loc.status === "trồng lại" || loc.status === "sang chậu"
-                          ? mapStatusIcons[loc.status]
-                          : null;
+                        const statusMeta = getPlantLocationStatusMeta(loc.status);
                         return (
                           <SortableBatchShell
                             key={loc.id}
@@ -762,13 +751,13 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                             <div className="relative w-full h-full rounded-xl overflow-hidden bg-emerald-50">
                               <PlantImage src={plant?.image_url} alt={plant?.name ?? ""} sizes="40px" />
                             </div>
-                            {statusIcon && (
+                            {statusMeta && statusMeta.icon && (
                               <div
                                 className="absolute -bottom-1 -left-1 z-10 rounded-lg w-5 h-5 flex border border-white items-center justify-center shadow-sm"
-                                style={{ backgroundColor: statusIcon.bg_color }}
+                                style={{ backgroundColor: statusMeta.iconBgColor }}
                               >
                                 <span className="text-xs font-semibold leading-none">
-                                  {statusIcon.text}
+                                  {statusMeta.icon}
                                 </span>
                               </div>
                             )}

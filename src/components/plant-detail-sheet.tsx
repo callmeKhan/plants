@@ -4,8 +4,9 @@ import { useState, useCallback } from "react";
 import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
 import { currentDateString } from "@/lib/time";
-import { normalizeBatchColor } from "@/lib/batch-color";
+import { getBatchColorRowClass, normalizeBatchColor } from "@/lib/batch-color";
 import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
+import { PLANT_LOCATION_STATUSES, getPlantLocationStatusMeta } from "@/lib/plant-location-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PlantImage } from "@/components/plant-image";
@@ -67,6 +68,23 @@ function PotSizeInput({ value, onChange, usedSizes }: { value: number; onChange:
   );
 }
 
+function StatusBadge({ status }: { status?: string }) {
+  const statusMeta = getPlantLocationStatusMeta(status);
+  if (!statusMeta) return null;
+
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
+      style={{
+        backgroundColor: statusMeta.badgeBgColor,
+        color: statusMeta.badgeTextColor,
+      }}
+    >
+      {statusMeta.icon && `${statusMeta.icon} `}{statusMeta.label}
+    </span>
+  );
+}
+
 interface PlantDetailSheetProps {
   plantId: string;
   onClose: () => void;
@@ -111,10 +129,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
-  const { plants, locations, platforms, gardens, locationsByPlatform, locationsByPlant, locationsById, mutate, refresh } = useData();
+  const { plants, locations, platforms, gardens, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, mutate, refresh } = useData();
 
   const plant = plants.find((p) => p.id === plantId);
   const batches = locationsByPlant.get(plantId) ?? [];
+  const totalSold = round2((salesByPlant.get(plantId) ?? []).reduce((sum, sale) => sum + sale.quantity, 0));
 
   if (!plant) return null;
 
@@ -399,10 +418,21 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
 
             {/* Stats */}
             <div className="rounded-2xl p-4" style={{ backgroundColor: "#ecfdf5" }}>
-              <div className="flex items-center gap-2">
-                <Package className="w-4 h-4" style={{ color: "#059669" }} />
-                <span className="text-sm font-medium" style={{ color: "#065f46" }}>Tổng số lượng</span>
-                <span className="ml-auto text-lg font-bold" style={{ color: "#059669" }}>{plant.total_quantity}</span>
+              <div className="grid grid-cols-2 divide-x divide-emerald-100">
+                <div className="flex items-center gap-2 pr-3">
+                  <Package className="w-4 h-4 shrink-0" style={{ color: "#059669" }} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium" style={{ color: "#065f46" }}>Tổng số lượng</p>
+                    <p className="text-lg font-bold leading-tight" style={{ color: "#059669" }}>{plant.total_quantity}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pl-3">
+                  <Package className="w-4 h-4 shrink-0" style={{ color: "#0d9488" }} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium" style={{ color: "#0f766e" }}>Đã bán</p>
+                    <p className="text-lg font-bold leading-tight" style={{ color: "#0d9488" }}>{totalSold}</p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -410,15 +440,17 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
             <div>
               <h3 className="font-semibold text-gray-800 mb-2 text-sm">Các đợt trồng ({batches.length})</h3>
               <div className="space-y-2">
-                {batches.map((b) => (
-                  <div
-                    key={b.id}
-                    className={`rounded-xl px-3 py-2.5 space-y-2 transition-all duration-500 ${b.id === highlightBatchId
-                      ? "border-2 border-green-200"
-                      : "border border-transparent"
-                      }`}
-                  >
-                    {editingBatchId === b.id ? (
+                {batches.map((b) => {
+                  const batchColorRowClass = getBatchColorRowClass(b.color);
+                  return (
+                    <div
+                      key={b.id}
+                      className={`rounded-xl px-3 py-2.5 space-y-2 transition-all duration-500 ${batchColorRowClass} ${b.id === highlightBatchId
+                        ? "border-2 border-green-200"
+                        : "border border-transparent"
+                        }`}
+                    >
+                      {editingBatchId === b.id ? (
                       <>
                         <div className="flex gap-2">
                           <input
@@ -452,8 +484,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                           onChange={(e) => setEditStatus(e.target.value)}
                         >
                           <option value="">— Trạng thái —</option>
-                          <option value="trồng lại">🌱 Trồng lại</option>
-                          <option value="sang chậu">🪴 Sang chậu</option>
+                          {PLANT_LOCATION_STATUSES.map((status) => (
+                            <option key={status.value} value={status.value}>
+                              {status.icon} {status.label}
+                            </option>
+                          ))}
                         </select>
                         {/* Platform search */}
                         <div className="relative">
@@ -542,17 +577,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                               {b.quantity} tấm · chậu {b.pot_size}
                             </div>
                             <div className="flex items-center gap-1.5">
-                              {b.status && (
-                                <span
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none"
-                                  style={{
-                                    backgroundColor: b.status === 'sang chậu' ? '#dbeafe' : '#fef3c7',
-                                    color: b.status === 'sang chậu' ? '#1d4ed8' : '#92400e',
-                                  }}
-                                >
-                                  {b.status === 'sang chậu' ? '🪴' : '🌱'} {b.status}
-                                </span>
-                              )}
+                              <StatusBadge status={b.status} />
                               {b.price != null && (
                                 <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-sm">
                                   <DollarSign className="w-3 h-3" />
@@ -595,9 +620,10 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                           </button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

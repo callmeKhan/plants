@@ -32,3 +32,10 @@ export function isBatchColor(value: unknown): value is BatchColor {
 export function normalizeBatchColor(value: unknown): BatchColor {
   return isBatchColor(value) ? value : "white";
 }
+
+export function getBatchColorRowClass(value: unknown) {
+  const color = normalizeBatchColor(value);
+  if (color === "yellow") return "bg-yellow-50";
+  if (color === "red") return "bg-red-50";
+  return "";
+}
