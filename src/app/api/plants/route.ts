@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { deleteR2Objects } from "@/lib/r2-delete";
 import { v4 as uuidv4 } from "uuid";
 
 // GET /api/plants
@@ -66,7 +67,21 @@ export async function DELETE(request: Request) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 
+  const { data: images, error: imagesError } = await supabase
+    .from("plant_note_images")
+    .select("object_key")
+    .eq("plant_id", id);
+
+  if (imagesError) return NextResponse.json({ error: imagesError.message }, { status: 500 });
+
+  let deletedImages = 0;
+  try {
+    deletedImages = await deleteR2Objects((images ?? []).map((image) => image.object_key));
+  } catch (e) {
+    return NextResponse.json({ error: `Failed to delete R2 images: ${e}` }, { status: 502 });
+  }
+
   const { error } = await supabase.from("plants").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ deleted: id });
+  return NextResponse.json({ deleted: id, deleted_images: deletedImages });
 }

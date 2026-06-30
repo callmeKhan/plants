@@ -5,6 +5,14 @@ import { useMemo, useState } from "react";
 
 const PLACEHOLDER_IMAGE = "/plant-placeholder.png";
 const ALLOWED_IMAGE_HOST = "lh3.googleusercontent.com";
+const R2_PUBLIC_IMAGE_HOST = (() => {
+  try {
+    const value = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL?.trim();
+    return value ? new URL(value).hostname : "";
+  } catch {
+    return "";
+  }
+})();
 
 interface PlantImageProps {
   src?: string | null;
@@ -40,6 +48,9 @@ function getSafeImageSrc(src?: string | null) {
     const url = new URL(value);
     if (url.protocol === "https:" && url.hostname === ALLOWED_IMAGE_HOST) {
       return forceStandardFormat(value);
+    }
+    if (url.protocol === "https:" && R2_PUBLIC_IMAGE_HOST && url.hostname === R2_PUBLIC_IMAGE_HOST) {
+      return value;
     }
   } catch {
     return PLACEHOLDER_IMAGE;

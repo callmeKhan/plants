@@ -1,21 +1,63 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useData } from "@/lib/data";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useData, type PlantNoteImage } from "@/lib/data";
 import { round2 } from "@/lib/number";
 import { currentDateString } from "@/lib/time";
 import { getBatchColorRowClass, normalizeBatchColor } from "@/lib/batch-color";
 import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
 import { PLANT_LOCATION_STATUSES, getPlantLocationStatusMeta } from "@/lib/plant-location-status";
+import { getPlantMaxImages, plantMaxImagesMessage, plantRemainingImagesMessage } from "@/lib/plant-notes-config";
+import { compressPlantPhoto } from "@/lib/image-compression";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PlantImage } from "@/components/plant-image";
+import { Toast } from "@/components/ui/toast";
 
 import {
-  X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search, ImageIcon,
-  DollarSign,
+  X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search,
+  DollarSign, FileText, Images, Maximize2, RotateCcw, Upload, ChevronLeft, ChevronRight, Star,
 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-modal";
+
+type DetailTab = "batches" | "notes";
+
+type SelectedDetailImage = {
+  src: string;
+  alt: string;
+  imageId: string;
+  imageNumber: number;
+} | null;
+
+type LargeImage = {
+  src?: string | null;
+  alt: string;
+  imageId?: string;
+  imageNumber?: number;
+} | null;
+
+type UploadedPlantImage = {
+  image_url: string;
+  object_key: string;
+  content_type: "image/jpeg" | "image/webp";
+  width: number;
+  height: number;
+  size_bytes: number;
+};
+
+type PlantImageDraft = {
+  file: File;
+  previewUrl: string;
+};
+
+function getDetailImageView(image: PlantNoteImage, imageNumber: number, plantName: string) {
+  return {
+    src: image.image_url,
+    alt: `${plantName} detail image ${imageNumber}`,
+    imageId: image.id,
+    imageNumber,
+  };
+}
 
 function fmtDate(d: string) {
   if (!d) return "";
@@ -114,9 +156,19 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState("");
 
-  // Edit image
-  const [editingImage, setEditingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState("");
+  // Notes
+  const [activeTab, setActiveTab] = useState<DetailTab>("batches");
+  const [selectedDetailImage, setSelectedDetailImage] = useState<SelectedDetailImage>(null);
+  const [largeImage, setLargeImage] = useState<LargeImage>(null);
+  const [noteText, setNoteText] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteText, setEditNoteText] = useState("");
+  const [plantImageFiles, setPlantImageFiles] = useState<PlantImageDraft[]>([]);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isSavingImages, setIsSavingImages] = useState(false);
+  const plantImageFilesRef = useRef<PlantImageDraft[]>([]);
+  const imageSwipeStartXRef = useRef<number | null>(null);
+  const imageSwipeDidMoveRef = useRef(false);
 
   // Edit batch
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
@@ -129,11 +181,68 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
-  const { plants, locations, platforms, gardens, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, mutate, refresh } = useData();
+  const { plants, locations, platforms, gardens, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, mutate, refresh } = useData();
 
   const plant = plants.find((p) => p.id === plantId);
   const batches = locationsByPlant.get(plantId) ?? [];
   const totalSold = round2((salesByPlant.get(plantId) ?? []).reduce((sum, sale) => sum + sale.quantity, 0));
+  const plantNotes = notesByPlant.get(plantId) ?? [];
+  const detailImages = useMemo(() => (
+    imagesByPlant.get(plantId) ?? []
+  ).map((image, index) => ({
+    imageNumber: index + 1,
+    image,
+  })), [imagesByPlant, plantId]);
+  const plantMaxImages = getPlantMaxImages();
+  const remainingImageSlots = Math.max(0, plantMaxImages - detailImages.length);
+  const remainingDraftImageSlots = Math.max(0, remainingImageSlots - plantImageFiles.length);
+  const canSelectPlantImages = remainingDraftImageSlots > 0;
+  const imageLimitMessage = plantMaxImagesMessage(plantMaxImages);
+  const draftNoteNumber = plantNotes.length + 1;
+
+  useEffect(() => {
+    plantImageFilesRef.current = plantImageFiles;
+  }, [plantImageFiles]);
+
+  useEffect(() => () => {
+    plantImageFilesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+  }, []);
+
+  useEffect(() => {
+    if (!largeImage) return;
+    const activeLargeImage = largeImage;
+
+    function showDetailImageFromKeyboard(direction: -1 | 1) {
+      if (detailImages.length === 0) return;
+
+      const currentIndex = activeLargeImage.imageId
+        ? detailImages.findIndex(({ image }) => image.id === activeLargeImage.imageId)
+        : -1;
+      const nextIndex = currentIndex >= 0
+        ? currentIndex + direction
+        : direction > 0 ? 0 : detailImages.length - 1;
+      const wrappedIndex = (nextIndex + detailImages.length) % detailImages.length;
+      const { image, imageNumber } = detailImages[wrappedIndex];
+      const nextImage = getDetailImageView(image, imageNumber, plant?.name ?? "Plant");
+      setSelectedDetailImage(nextImage);
+      setLargeImage(nextImage);
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setLargeImage(null);
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        showDetailImageFromKeyboard(-1);
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        showDetailImageFromKeyboard(1);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [detailImages, largeImage, plant?.name]);
 
   if (!plant) return null;
 
@@ -166,19 +275,297 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     }
   }
 
-  async function handleUpdateImage() {
-    if (!newImageUrl.trim() || !plant) return;
+  function handleSelectPlantImageFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(e.target.files ?? [])
+      .filter((file) => file.type.startsWith("image/"))
+      .map((file) => ({ file, previewUrl: URL.createObjectURL(file) }));
+
+    if (selected.length > 0) {
+      const availableSlots = remainingDraftImageSlots;
+      const accepted = selected.slice(0, availableSlots);
+      const rejected = selected.slice(availableSlots);
+
+      rejected.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+
+      if (accepted.length > 0) {
+        setPlantImageFiles((prev) => [...prev, ...accepted]);
+      }
+
+      if (rejected.length > 0) {
+        setToast({ text: plantRemainingImagesMessage(availableSlots, plantMaxImages), type: "error" });
+      }
+    }
+
+    e.currentTarget.value = "";
+  }
+
+  function removePlantImageFile(index: number) {
+    setPlantImageFiles((prev) => {
+      const item = prev[index];
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  function clearPlantImageFiles() {
+    setPlantImageFiles((prev) => {
+      prev.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
+  }
+
+  async function uploadPlantImage(file: File): Promise<UploadedPlantImage> {
+    const compressed = await compressPlantPhoto(file);
+    const signRes = await fetch("/api/r2-upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        plantId,
+        fileName: file.name,
+        contentType: compressed.contentType,
+      }),
+    });
+
+    if (!signRes.ok) throw new Error("Cannot create upload URL");
+    const signed = await signRes.json() as { uploadUrl?: string; publicUrl?: string; key?: string };
+    if (!signed.uploadUrl || !signed.publicUrl || !signed.key) throw new Error("Invalid upload URL");
+
+    const uploadRes = await fetch(signed.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": compressed.contentType },
+      body: compressed.blob,
+    });
+
+    if (!uploadRes.ok) throw new Error("Cannot upload image");
+
+    return {
+      image_url: signed.publicUrl,
+      object_key: signed.key,
+      content_type: compressed.contentType,
+      width: compressed.width,
+      height: compressed.height,
+      size_bytes: compressed.blob.size,
+    };
+  }
+
+  async function handleSaveNote() {
+    if (!noteText.trim()) return;
+
+    setIsSavingNote(true);
+    try {
+      const res = await fetch("/api/plant-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plant_id: plantId,
+          content: noteText.trim(),
+        }),
+      });
+
+      if (!res.ok) throw new Error("Cannot save note");
+
+      mutate.upsertPlantNote(await res.json());
+      setNoteText("");
+      setToast({ text: "Đã lưu ghi chú", type: "success" });
+    } catch {
+      setToast({ text: "Lỗi lưu ghi chú", type: "error" });
+      await refresh("notes");
+    } finally {
+      setIsSavingNote(false);
+    }
+  }
+
+  async function handleSavePlantImages() {
+    if (plantImageFiles.length === 0) return;
+    if (plantImageFiles.length > remainingImageSlots) {
+      setToast({ text: plantRemainingImagesMessage(remainingImageSlots, plantMaxImages), type: "error" });
+      return;
+    }
+
+    setIsSavingImages(true);
+    try {
+      const images: UploadedPlantImage[] = [];
+      for (let i = 0; i < plantImageFiles.length; i += 1) {
+        images.push(await uploadPlantImage(plantImageFiles[i].file));
+      }
+
+      const res = await fetch("/api/plant-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plant_id: plantId,
+          images,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(res.status === 409 ? "IMAGE_LIMIT" : "Cannot save images");
+      }
+
+      const savedImages = await res.json() as PlantNoteImage[];
+      savedImages.forEach((image) => mutate.upsertPlantImage(image));
+      clearPlantImageFiles();
+      setToast({ text: "Đã lưu hình", type: "success" });
+    } catch (error) {
+      setToast({
+        text: error instanceof Error && error.message === "IMAGE_LIMIT"
+          ? imageLimitMessage
+          : "Lỗi lưu hình",
+        type: "error",
+      });
+      await refresh("images");
+    } finally {
+      setIsSavingImages(false);
+    }
+  }
+
+  function startEditNote(note: { id: string; content: string }) {
+    setEditingNoteId(note.id);
+    setEditNoteText(note.content);
+  }
+
+  async function handleUpdateNote(noteId: string) {
+    if (!editNoteText.trim()) return;
+
+    setIsSavingNote(true);
+    try {
+      const res = await fetch(`/api/plant-notes?id=${noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editNoteText.trim() }),
+      });
+
+      if (!res.ok) throw new Error("Cannot update note");
+
+      mutate.upsertPlantNote(await res.json());
+      setEditingNoteId(null);
+      setEditNoteText("");
+      setToast({ text: "Đã cập nhật ghi chú", type: "success" });
+    } catch {
+      setToast({ text: "Lỗi cập nhật ghi chú", type: "error" });
+      await refresh("notes");
+    } finally {
+      setIsSavingNote(false);
+    }
+  }
+
+  async function doDeleteNote(noteId: string) {
+    try {
+      const res = await fetch(`/api/plant-notes?id=${noteId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Cannot delete note");
+      mutate.removePlantNote(noteId);
+      if (editingNoteId === noteId) {
+        setEditingNoteId(null);
+        setEditNoteText("");
+      }
+      setToast({ text: "Đã xoá ghi chú", type: "success" });
+    } catch {
+      setToast({ text: "Lỗi xoá ghi chú", type: "error" });
+      await refresh("notes");
+    }
+  }
+
+  async function doDeletePlantImage(imageId: string) {
+    try {
+      const res = await fetch(`/api/plant-images?id=${imageId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Cannot delete image");
+      mutate.removePlantImage(imageId);
+      if (selectedDetailImage?.imageId === imageId) setSelectedDetailImage(null);
+      setToast({ text: "Đã xoá hình", type: "success" });
+    } catch {
+      setToast({ text: "Lỗi xoá hình", type: "error" });
+      await refresh("images");
+    }
+  }
+
+  async function doSetMainImage(image: PlantNoteImage) {
+    if (!plant) return;
+
     try {
       const res = await fetch(`/api/plants?id=${plantId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...plant, image_url: newImageUrl.trim() }),
+        body: JSON.stringify({ ...plant, image_url: image.image_url }),
       });
-      if (res.ok) { mutate.upsertPlant(await res.json()); setEditingImage(false); setNewImageUrl(""); }
-      else setToast({ text: "Lỗi cập nhật hình ảnh", type: "error" });
+      if (!res.ok) throw new Error("Cannot set main image");
+
+      mutate.upsertPlant(await res.json());
+      setToast({ text: "Đã đặt làm hình chính", type: "success" });
     } catch {
-      setToast({ text: "Lỗi kết nối", type: "error" });
+      setToast({ text: "Lỗi đặt hình chính", type: "error" });
+      await refresh("plants");
     }
+  }
+
+  function showDetailImageAt(index: number, openLarge = false) {
+    if (detailImages.length === 0) return;
+
+    const wrappedIndex = (index + detailImages.length) % detailImages.length;
+    const { image, imageNumber } = detailImages[wrappedIndex];
+    const detailImage = getDetailImageView(image, imageNumber, plant?.name ?? "Plant");
+    setSelectedDetailImage(detailImage);
+    if (openLarge) setLargeImage(detailImage);
+  }
+
+  function showAdjacentDetailImage(currentImageId: string | undefined, direction: -1 | 1, openLarge = false) {
+    if (detailImages.length === 0) return;
+
+    const currentIndex = currentImageId
+      ? detailImages.findIndex(({ image }) => image.id === currentImageId)
+      : -1;
+    const nextIndex = currentIndex >= 0
+      ? currentIndex + direction
+      : direction > 0 ? 0 : detailImages.length - 1;
+
+    showDetailImageAt(nextIndex, openLarge);
+  }
+
+  function openDisplayedImageLarge() {
+    if (imageSwipeDidMoveRef.current) {
+      imageSwipeDidMoveRef.current = false;
+      return;
+    }
+
+    if (selectedDetailImage) {
+      setLargeImage(selectedDetailImage);
+      return;
+    }
+
+    setLargeImage({ src: plant?.image_url, alt: plant?.name ?? "Plant" });
+  }
+
+  function handleImageSwipeStart(e: React.TouchEvent) {
+    imageSwipeStartXRef.current = e.touches[0]?.clientX ?? null;
+  }
+
+  function handleDisplayedImageSwipeEnd(e: React.TouchEvent) {
+    const startX = imageSwipeStartXRef.current;
+    imageSwipeStartXRef.current = null;
+    const endX = e.changedTouches[0]?.clientX;
+    if (startX == null || endX == null) return;
+
+    const deltaX = endX - startX;
+    if (Math.abs(deltaX) < 48) return;
+
+    imageSwipeDidMoveRef.current = true;
+    showAdjacentDetailImage(selectedDetailImage?.imageId, deltaX < 0 ? 1 : -1);
+  }
+
+  function handleLargeImageSwipeEnd(e: React.TouchEvent) {
+    const startX = imageSwipeStartXRef.current;
+    imageSwipeStartXRef.current = null;
+    const endX = e.changedTouches[0]?.clientX;
+    if (startX == null || endX == null) return;
+
+    const deltaX = endX - startX;
+    if (Math.abs(deltaX) < 48) return;
+
+    imageSwipeDidMoveRef.current = true;
+    showAdjacentDetailImage(largeImage?.imageId, deltaX < 0 ? 1 : -1, true);
+  }
+
+  function selectDetailImage(image: PlantNoteImage, imageNumber: number) {
+    setSelectedDetailImage(getDetailImageView(image, imageNumber, plant?.name ?? "Plant"));
   }
 
   function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number; status?: string }) {
@@ -318,13 +705,22 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   }
 
   const usedSizes = locations.map((l) => l.pot_size);
+  const mainImageSrc = selectedDetailImage?.src ?? plant.image_url;
+  const mainImageAlt = selectedDetailImage?.alt ?? plant.name;
+  const largeImageDetailIndex = largeImage?.imageId
+    ? detailImages.findIndex(({ image }) => image.id === largeImage.imageId)
+    : -1;
+  const canNavigateLargeImage = !!largeImage && (
+    detailImages.length > 1 || (detailImages.length === 1 && largeImageDetailIndex < 0)
+  );
 
   return (
     <>
+      {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
       <div
         className={`fixed inset-0 flex flex-col justify-end sheet-backdrop${isClosing ? " closing" : ""}`}
         style={{ zIndex }}
-        onClick={() => { handleClose(); setEditingName(false); setEditingImage(false); }}
+        onClick={() => { handleClose(); setEditingName(false); }}
       >
         <div
           className={`bg-white rounded-t-3xl shadow-2xl h-[85vh] flex flex-col sheet-panel${isClosing ? " closing" : ""}`}
@@ -375,7 +771,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
               </div>
               <button
                 className="w-12 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                onClick={() => { handleClose(); setEditingName(false); setEditingImage(false); }}
+                onClick={() => { handleClose(); setEditingName(false); }}
               >
                 <X className="w-4 h-4 text-gray-600" />
               </button>
@@ -387,35 +783,117 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
 
             {/* Image */}
             <div className="relative rounded-2xl overflow-hidden bg-gray-50 aspect-square w-full">
-              <PlantImage
-                src={plant.image_url}
-                alt={plant.name}
-                sizes="(max-width: 640px) calc(100vw - 40px), 472px"
-              />
+              <button
+                type="button"
+                className="absolute inset-0 block cursor-zoom-in"
+                onClick={openDisplayedImageLarge}
+                onTouchStart={handleImageSwipeStart}
+                onTouchEnd={handleDisplayedImageSwipeEnd}
+                aria-label="Xem ảnh lớn"
+              >
+                <PlantImage
+                  src={mainImageSrc}
+                  alt={mainImageAlt}
+                  sizes="(max-width: 640px) calc(100vw - 40px), 472px"
+                />
+                <span className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow" aria-hidden="true">
+                  <Maximize2 className="h-4 w-4" />
+                </span>
+              </button>
+              {selectedDetailImage && (
+                <button
+                  type="button"
+                  className="absolute left-3 top-3 h-9 rounded-full bg-white/90 px-3 text-xs font-semibold text-gray-700 shadow flex items-center gap-1.5"
+                  onClick={() => setSelectedDetailImage(null)}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Hình chính
+                </button>
+              )}
+              {selectedDetailImage && (
+                <span className="absolute right-3 top-3 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow">
+                  #{selectedDetailImage.imageNumber}
+                </span>
+              )}
             </div>
 
-            {/* Update image */}
-            {editingImage ? (
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Nhập URL hình mới"
-                  value={newImageUrl}
-                  onChange={(e) => setNewImageUrl(e.target.value)}
-                  autoFocus
-                />
-                <Button size="sm" onClick={() => openConfirm("Cập nhật hình ảnh cho cây này?", handleUpdateImage)}>Lưu</Button>
-                <Button size="sm" variant="outline" onClick={() => { setEditingImage(false); setNewImageUrl(""); }}>Huỷ</Button>
+            {detailImages.length > 0 && (
+              <div className="grid grid-cols-5 gap-2">
+                {detailImages.map(({ imageNumber, image }, index) => (
+                  <div
+                    key={image.id}
+                    className={`relative aspect-square overflow-hidden rounded-lg bg-gray-50 transition ${selectedDetailImage?.imageId === image.id ? "ring-2 ring-emerald-500 ring-offset-1" : "ring-1 ring-gray-100"}`}
+                  >
+                    <button
+                      type="button"
+                      className="absolute inset-0"
+                      onClick={() => selectDetailImage(image, imageNumber)}
+                      aria-label={`Xem ảnh ${imageNumber}`}
+                    >
+                      <PlantImage
+                        src={image.image_url}
+                        alt={`${plant.name} detail ${index + 1}`}
+                        sizes="(max-width: 640px) calc((100vw - 56px) / 5), 88px"
+                      />
+                      <span className="absolute left-1 top-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow">
+                        #{imageNumber}
+                      </span>
+                    </button>
+                    {activeTab === "notes" && (
+                      <>
+                        <button
+                          type="button"
+                          className="absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-red-500 shadow"
+                          onClick={() => openConfirm("Xoá hình này?", () => doDeletePlantImage(image.id))}
+                          aria-label={`Xoá ảnh ${imageNumber}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                        {plant.image_url === image.image_url ? (
+                          <span
+                            className="absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow"
+                            aria-label={`Ảnh ${imageNumber} đang là ảnh chính`}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-amber-500 shadow"
+                            onClick={() => openConfirm("Đặt hình này làm hình chính?", () => doSetMainImage(image))}
+                            aria-label={`Đặt ảnh ${imageNumber} làm ảnh chính`}
+                          >
+                            <Star className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
-            ) : (
-              <button
-                className="w-full h-8 rounded-xl border border-gray-200 text-sm text-gray-600 flex items-center justify-center gap-2 hover:bg-gray-50"
-                onClick={() => setEditingImage(true)}
-              >
-                <ImageIcon className="w-4 h-4" />
-                Cập nhật hình ảnh
-              </button>
             )}
 
+            <div className="grid grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1">
+              <button
+                type="button"
+                className={`h-10 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 ${activeTab === "batches" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-500"}`}
+                onClick={() => setActiveTab("batches")}
+              >
+                <Package className="w-4 h-4" />
+                Đợt trồng
+              </button>
+              <button
+                type="button"
+                className={`h-10 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 ${activeTab === "notes" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-500"}`}
+                onClick={() => setActiveTab("notes")}
+              >
+                <FileText className="w-4 h-4" />
+                Ghi chú
+              </button>
+            </div>
+
+            {activeTab === "batches" ? (
+              <>
             {/* Stats */}
             <div className="rounded-2xl p-4" style={{ backgroundColor: "#ecfdf5" }}>
               <div className="grid grid-cols-2 divide-x divide-emerald-100">
@@ -626,6 +1104,160 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                 })}
               </div>
             </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-gray-100 bg-white p-3 space-y-2">
+                  <textarea
+                    rows={2}
+                    className="w-full h-16 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-300 resize-none"
+                    placeholder={`Ghi chú #${draftNoteNumber}`}
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                  />
+
+                  {plantImageFiles.length > 0 && (
+                    <div className="grid grid-cols-5 gap-2">
+                      {plantImageFiles.map((item, index) => (
+                        <div key={`${item.previewUrl}-${index}`} className="relative aspect-square overflow-hidden rounded-md bg-gray-50">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
+                          <span className="absolute left-1 top-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow">
+                            #{detailImages.length + index + 1}
+                          </span>
+                          <button
+                            type="button"
+                            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow"
+                            onClick={() => removePlantImageFile(index)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      disabled={isSavingNote || !noteText.trim()}
+                      onClick={() => openConfirm("Lưu ghi chú này?", handleSaveNote)}
+                    >
+                      <Check className="h-4 w-4" />
+                      {isSavingNote ? "Đang lưu" : "Lưu note"}
+                    </Button>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className={isSavingImages || !canSelectPlantImages ? "pointer-events-none opacity-50" : ""}
+                    >
+                      <label>
+                        <Images className="h-4 w-4" />
+                        Ảnh
+                        <input
+                          className="sr-only"
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleSelectPlantImageFiles}
+                          disabled={isSavingImages || !canSelectPlantImages}
+                        />
+                      </label>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={plantImageFiles.length === 0 ? "outline" : "default"}
+                      disabled={isSavingImages || plantImageFiles.length === 0}
+                      onClick={() => openConfirm("Lưu hình đã chọn?", handleSavePlantImages)}
+                    >
+                      <Upload className="h-4 w-4" />
+                      {isSavingImages ? "Lưu..." : `${plantImageFiles.length || 0}/${remainingImageSlots}`}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-gray-800 text-sm">Ghi chú ({plantNotes.length})</h3>
+                  {plantNotes.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center text-sm text-gray-400">
+                      Chưa có ghi chú
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white divide-y divide-gray-100">
+                      {plantNotes.map((note, noteIndex) => (
+                        <div key={note.id} className="p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-emerald-700">
+                                #{noteIndex + 1}
+                              </span>
+                              <span className="text-xs font-medium text-gray-400">
+                                {fmtDate(note.created_at.slice(0, 10))}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-orange-500 hover:bg-orange-50"
+                                onClick={() => startEditNote(note)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                                onClick={() => openConfirm("Xoá ghi chú này?", () => doDeleteNote(note.id))}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {editingNoteId === note.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                rows={2}
+                                className="w-full h-16 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-300 resize-none"
+                                value={editNoteText}
+                                onChange={(e) => setEditNoteText(e.target.value)}
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={isSavingNote || !editNoteText.trim()}
+                                  onClick={() => openConfirm("Cập nhật ghi chú này?", () => handleUpdateNote(note.id))}
+                                >
+                                  <Check className="h-4 w-4" />
+                                  Lưu
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  disabled={isSavingNote}
+                                  onClick={() => { setEditingNoteId(null); setEditNoteText(""); }}
+                                >
+                                  Huỷ
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words text-sm leading-5 text-gray-700">
+                              {note.content || "Ghi chú trống"}
+                            </p>
+                          )}
+
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Delete plant */}
             <button
@@ -642,6 +1274,64 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
           </div>
         </div>
       </div>
+      {largeImage && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/85 px-4 py-6"
+          style={{ zIndex: zIndex + 160 }}
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLargeImage(null)}
+        >
+          <div
+            className="relative h-full w-full max-w-5xl"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleImageSwipeStart}
+            onTouchEnd={handleLargeImageSwipeEnd}
+          >
+            <button
+              type="button"
+              className="absolute right-0 top-0 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow"
+              onClick={() => setLargeImage(null)}
+              aria-label="Đóng ảnh lớn"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            {canNavigateLargeImage && (
+              <>
+                <button
+                  type="button"
+                  className="absolute left-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow"
+                  onClick={() => showAdjacentDetailImage(largeImage.imageId, -1, true)}
+                  aria-label="Ảnh trước"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  className="absolute right-0 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow"
+                  onClick={() => showAdjacentDetailImage(largeImage.imageId, 1, true)}
+                  aria-label="Ảnh sau"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            )}
+            {largeImageDetailIndex >= 0 && (
+              <span className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-gray-700 shadow">
+                {largeImageDetailIndex + 1}/{detailImages.length}
+              </span>
+            )}
+            <div className="relative h-full w-full overflow-hidden rounded-2xl">
+              <PlantImage
+                src={largeImage.src}
+                alt={largeImage.alt}
+                sizes="100vw"
+                className="object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
       {confirmModal}
     </>
   );

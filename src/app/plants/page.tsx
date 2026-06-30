@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ChevronDown,
   SlidersHorizontal,
+  FileText,
 } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
@@ -121,6 +122,7 @@ function PlantsPageInner() {
   const [filterPotSize, setFilterPotSize] = useState<number[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterImage, setFilterImage] = useState<"all" | "has_image" | "no_image">("all");
+  const [filterNotes, setFilterNotes] = useState<"all" | "has_note">("all");
   const [showFilters, setShowFilters] = useState(false);
   const [closingFilters, setClosingFilters] = useState(false);
 
@@ -140,7 +142,7 @@ function PlantsPageInner() {
   }, []);
 
 
-  const { plants, gardens, platforms, locations, locationsByPlatform, locationsByPlant, mutate } = useData();
+  const { plants, gardens, platforms, locations, locationsByPlatform, locationsByPlant, notesByPlant, mutate } = useData();
 
   function floorsForGarden(gardenId: string) {
     return Array.from(new Set(
@@ -301,6 +303,9 @@ function PlantsPageInner() {
       return !plant?.image_url;
     });
   }
+  if (filterNotes === "has_note") {
+    plantIds = plantIds.filter((pid) => (notesByPlant.get(pid)?.length ?? 0) > 0);
+  }
 
   plantIds = plantIds.sort((a, b) => {
     const nameA = plants?.find((p) => p.id === a)?.name ?? a;
@@ -308,7 +313,7 @@ function PlantsPageInner() {
     return nameA.localeCompare(nameB, "vi", { sensitivity: "base", numeric: true });
   });
   const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort((a, b) => a - b);
-  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all";
+  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all" || filterNotes !== "all";
 
   return (
     <>
@@ -520,7 +525,7 @@ function PlantsPageInner() {
             </h2>
             {hasActiveFilter && (
               <button
-                onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); }}
+                onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); setFilterNotes("all"); }}
                 className="text-xs text-emerald-600 flex items-center gap-1"
               >
                 <X className="w-3 h-3" /> Bỏ lọc
@@ -548,7 +553,7 @@ function PlantsPageInner() {
               }}
             >
               <SlidersHorizontal className="w-4 h-4" />
-              {(filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all") && (
+              {(filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all" || filterNotes !== "all") && (
                 <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
               )}
             </button>
@@ -572,7 +577,7 @@ function PlantsPageInner() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">Bộ lọc</h3>
                   <button
-                    onClick={() => { setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); }}
+                    onClick={() => { setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); setFilterNotes("all"); }}
                     className="text-xs text-gray-400 hover:text-gray-600"
                   >
                     Xóa tất cả
@@ -698,6 +703,33 @@ function PlantsPageInner() {
                   </div>
                 </div>
 
+                {/* Note filter */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ghi chú</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setFilterNotes("all")}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                      style={{
+                        backgroundColor: filterNotes === "all" ? "#059669" : "#f3f4f6",
+                        color: filterNotes === "all" ? "#fff" : "#6b7280",
+                      }}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      onClick={() => setFilterNotes("has_note")}
+                      className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                      style={{
+                        backgroundColor: filterNotes === "has_note" ? "#7c3aed" : "#f3f4f6",
+                        color: filterNotes === "has_note" ? "#fff" : "#6b7280",
+                      }}
+                    >
+                      Có ghi chú
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   onClick={handleCloseFilters}
                   className="w-full h-11 rounded-xl text-sm font-semibold text-white flex items-center justify-center"
@@ -720,6 +752,7 @@ function PlantsPageInner() {
             {plantIds.map((pid) => {
               const plant = plants?.find((p) => p.id === pid);
               const batches = locationsByPlant.get(pid) ?? [];
+              const noteCount = notesByPlant.get(pid)?.length ?? 0;
               const total = round2(batches.reduce((s, l) => s + l.quantity, 0));
               return (
                 <button
@@ -735,11 +768,19 @@ function PlantsPageInner() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1.5 justify-between">
                           <span className="font-semibold text-gray-900 truncate">{plant?.name ?? pid}</span>
-                          {total > 0 ? (
-                            <Badge variant="default">×{total}</Badge>
-                          ) : (
-                            <Badge variant="alert" className="text-red-400 font-medium">Hết hàng</Badge>
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {noteCount > 0 && (
+                              <Badge variant="warning" className="gap-1 px-2">
+                                <FileText className="h-3 w-3" />
+                                {noteCount}
+                              </Badge>
+                            )}
+                            {total > 0 ? (
+                              <Badge variant="default">×{total}</Badge>
+                            ) : (
+                              <Badge variant="alert" className="text-red-400 font-medium">Hết hàng</Badge>
+                            )}
+                          </div>
                         </div>
                         {batches.length > 0 && (
                           <div className="space-y-1">

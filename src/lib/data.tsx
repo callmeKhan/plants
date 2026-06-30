@@ -45,9 +45,30 @@ export interface PlantSale {
   created_at: string;
 }
 
+export interface PlantNoteImage {
+  id: string;
+  plant_id: string;
+  image_url: string;
+  object_key: string;
+  content_type: string;
+  width: number | null;
+  height: number | null;
+  size_bytes: number | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface PlantNote {
+  id: string;
+  plant_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Context ──
 
-export type Resource = "gardens" | "plants" | "platforms" | "locations" | "sales";
+export type Resource = "gardens" | "plants" | "platforms" | "locations" | "sales" | "notes" | "images";
 
 interface Mutate {
   upsertGarden: (g: Garden) => void;
@@ -59,6 +80,10 @@ interface Mutate {
   upsertLocation: (l: PlantLocation) => void;
   removeLocation: (id: string) => void;
   upsertPlantSale: (s: PlantSale) => void;
+  upsertPlantNote: (n: PlantNote) => void;
+  removePlantNote: (id: string) => void;
+  upsertPlantImage: (i: PlantNoteImage) => void;
+  removePlantImage: (id: string) => void;
 }
 
 interface DataContextType {
@@ -67,10 +92,14 @@ interface DataContextType {
   platforms: Platform[];
   locations: PlantLocation[];
   plantSales: PlantSale[];
+  plantNotes: PlantNote[];
+  plantImages: PlantNoteImage[];
   locationsByPlatform: Map<string, PlantLocation[]>;
   locationsByPlant: Map<string, PlantLocation[]>;
   locationsById: Map<string, PlantLocation>;
   salesByPlant: Map<string, PlantSale[]>;
+  notesByPlant: Map<string, PlantNote[]>;
+  imagesByPlant: Map<string, PlantNoteImage[]>;
   refresh: (...resources: Resource[]) => Promise<void>;
   mutate: Mutate;
 }
@@ -82,6 +111,8 @@ const defaultMutate: Mutate = {
   upsertPlatform: noop, removePlatform: noop,
   upsertLocation: noop, removeLocation: noop,
   upsertPlantSale: noop,
+  upsertPlantNote: noop, removePlantNote: noop,
+  upsertPlantImage: noop, removePlantImage: noop,
 };
 
 const DataContext = createContext<DataContextType>({
@@ -90,10 +121,14 @@ const DataContext = createContext<DataContextType>({
   platforms: [],
   locations: [],
   plantSales: [],
+  plantNotes: [],
+  plantImages: [],
   locationsByPlatform: new Map(),
   locationsByPlant: new Map(),
   locationsById: new Map(),
   salesByPlant: new Map(),
+  notesByPlant: new Map(),
+  imagesByPlant: new Map(),
   refresh: async () => {},
   mutate: defaultMutate,
 });
@@ -104,9 +139,11 @@ const RESOURCE_CONFIG = {
   platforms: { url: "/api/platforms" },
   locations: { url: "/api/plant-locations" },
   sales: { url: "/api/plant-sales" },
+  notes: { url: "/api/plant-notes" },
+  images: { url: "/api/plant-images" },
 } as const;
 
-const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales"];
+const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales", "notes", "images"];
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [gardens, setGardens] = useState<Garden[]>([]);
@@ -114,6 +151,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [locations, setLocations] = useState<PlantLocation[]>([]);
   const [plantSales, setPlantSales] = useState<PlantSale[]>([]);
+  const [plantNotes, setPlantNotes] = useState<PlantNote[]>([]);
+  const [plantImages, setPlantImages] = useState<PlantNoteImage[]>([]);
 
   const setters = useMemo<Record<Resource, (data: never[]) => void>>(() => ({
     gardens: setGardens,
@@ -121,6 +160,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     platforms: setPlatforms,
     locations: setLocations,
     sales: setPlantSales,
+    notes: setPlantNotes,
+    images: setPlantImages,
   }), []);
 
   const refresh = useCallback(async (...resources: Resource[]) => {
@@ -154,6 +195,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       upsertLocation: upsert(setLocations),
       removeLocation: remove(setLocations),
       upsertPlantSale: upsert(setPlantSales),
+      upsertPlantNote: upsert(setPlantNotes),
+      removePlantNote: remove(setPlantNotes),
+      upsertPlantImage: upsert(setPlantImages),
+      removePlantImage: remove(setPlantImages),
     };
   }, []);
 
@@ -196,12 +241,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return map;
   }, [plantSales]);
 
+  const notesByPlant = useMemo(() => {
+    const map = new Map<string, PlantNote[]>();
+    for (const note of plantNotes) {
+      const arr = map.get(note.plant_id);
+      if (arr) arr.push(note); else map.set(note.plant_id, [note]);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+    }
+    return map;
+  }, [plantNotes]);
+
+  const imagesByPlant = useMemo(() => {
+    const map = new Map<string, PlantNoteImage[]>();
+    for (const image of plantImages) {
+      const arr = map.get(image.plant_id);
+      if (arr) arr.push(image); else map.set(image.plant_id, [image]);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+    }
+    return map;
+  }, [plantImages]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   return (
-    <DataContext value={{ gardens, plants, platforms, locations, plantSales, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, refresh, mutate }}>
+    <DataContext value={{ gardens, plants, platforms, locations, plantSales, plantNotes, plantImages, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, refresh, mutate }}>
       {children}
     </DataContext>
   );
