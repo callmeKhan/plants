@@ -32,14 +32,17 @@ import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
 import { getPlantLocationStatusMeta } from "@/lib/plant-location-status";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Toast } from "@/components/ui/toast";
 import {
   X, Pencil, Check, Package, Leaf, Plus, Trash2,
-  DollarSign, GripVertical, ListOrdered, Palette,
+  DollarSign, FileText, GripVertical, ListOrdered, Palette,
 } from "lucide-react";
 import { PlatformGridModal } from "@/components/platform-grid-modal";
 import { PlantImage } from "@/components/plant-image";
+
+type DetailTab = "batches" | "notes";
 
 function fmtDate(d: string) {
   if (!d) return "";
@@ -132,6 +135,13 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [editingCapacity, setEditingCapacity] = useState(false);
   const [newCapacity, setNewCapacity] = useState("");
 
+  // Notes
+  const [activeTab, setActiveTab] = useState<DetailTab>("batches");
+  const [noteText, setNoteText] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteText, setEditNoteText] = useState("");
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
   // Sell batch
   const [sellingLocId, setSellingLocId] = useState<string | null>(null);
   const [sellQty, setSellQty] = useState("");
@@ -155,10 +165,12 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
   const [draftColors, setDraftColors] = useState<Record<string, BatchColor>>({});
   const [savingColors, setSavingColors] = useState(false);
 
-  const { platforms, gardens, plants, locationsByPlatform, locationsById, mutate, refresh } = useData();
+  const { platforms, gardens, plants, locationsByPlatform, locationsById, notesByPlatform, mutate, refresh } = useData();
 
   const detailPlatform = platforms.find((p) => p.id === platformId);
   const platformLocs = useMemo(() => locationsByPlatform.get(platformId) ?? [], [locationsByPlatform, platformId]);
+  const platformNotes = notesByPlatform.get(platformId) ?? [];
+  const draftNoteNumber = platformNotes.length + 1;
   const platformLocIds = useMemo(() => platformLocs.map((loc) => loc.id), [platformLocs]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -240,6 +252,79 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
       else setToast({ text: "Lỗi cập nhật sức chứa", type: "error" });
     } catch {
       setToast({ text: "Lỗi kết nối", type: "error" });
+    }
+  }
+
+  async function handleSaveNote() {
+    if (!noteText.trim()) return;
+
+    setIsSavingNote(true);
+    try {
+      const res = await fetch("/api/platform-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform_id: platformId,
+          content: noteText.trim(),
+        }),
+      });
+
+      if (!res.ok) throw new Error("Cannot save note");
+
+      mutate.upsertPlatformNote(await res.json());
+      setNoteText("");
+      setToast({ text: "Đã lưu ghi chú", type: "success" });
+    } catch {
+      setToast({ text: "Lỗi lưu ghi chú", type: "error" });
+      await refresh("platformNotes");
+    } finally {
+      setIsSavingNote(false);
+    }
+  }
+
+  function startEditNote(note: { id: string; content: string }) {
+    setEditingNoteId(note.id);
+    setEditNoteText(note.content);
+  }
+
+  async function handleUpdateNote(noteId: string) {
+    if (!editNoteText.trim()) return;
+
+    setIsSavingNote(true);
+    try {
+      const res = await fetch(`/api/platform-notes?id=${noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editNoteText.trim() }),
+      });
+
+      if (!res.ok) throw new Error("Cannot update note");
+
+      mutate.upsertPlatformNote(await res.json());
+      setEditingNoteId(null);
+      setEditNoteText("");
+      setToast({ text: "Đã cập nhật ghi chú", type: "success" });
+    } catch {
+      setToast({ text: "Lỗi cập nhật ghi chú", type: "error" });
+      await refresh("platformNotes");
+    } finally {
+      setIsSavingNote(false);
+    }
+  }
+
+  async function doDeleteNote(noteId: string) {
+    try {
+      const res = await fetch(`/api/platform-notes?id=${noteId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Cannot delete note");
+      mutate.removePlatformNote(noteId);
+      if (editingNoteId === noteId) {
+        setEditingNoteId(null);
+        setEditNoteText("");
+      }
+      setToast({ text: "Đã xoá ghi chú", type: "success" });
+    } catch {
+      setToast({ text: "Lỗi xoá ghi chú", type: "error" });
+      await refresh("platformNotes");
     }
   }
 
@@ -475,6 +560,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     if (savingOrder) return;
 
     if (!isReordering) {
+      setActiveTab("batches");
       setSellingLocId(null);
       setSellQty("");
       setMovingLocId(null);
@@ -504,6 +590,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
     if (isReordering || savingOrder || savingColors) return;
 
     if (!isEditingColors) {
+      setActiveTab("batches");
       setSellingLocId(null);
       setSellQty("");
       setMovingLocId(null);
@@ -687,6 +774,27 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
               <p className="text-xs" style={{ color: "#60a5fa" }}>Còn trống: {free} tấm</p>
             </div>
 
+            <div className="grid grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1">
+              <button
+                type="button"
+                className={`h-10 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 ${activeTab === "batches" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-500"}`}
+                onClick={() => setActiveTab("batches")}
+              >
+                <Package className="w-4 h-4" />
+                Đợt trồng
+              </button>
+              <button
+                type="button"
+                className={`h-10 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 ${activeTab === "notes" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-500"}`}
+                onClick={() => setActiveTab("notes")}
+              >
+                <FileText className="w-4 h-4" />
+                Ghi chú
+              </button>
+            </div>
+
+            {activeTab === "batches" ? (
+              <>
             {/* Plants list */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -1030,6 +1138,108 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                 </DndContext>
               )}
             </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-gray-100 bg-white p-3 space-y-2">
+                  <textarea
+                    rows={2}
+                    className="w-full h-16 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-300 resize-none"
+                    placeholder={`Ghi chú #${draftNoteNumber}`}
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                  />
+
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={isSavingNote || !noteText.trim()}
+                    onClick={() => openConfirm("Lưu ghi chú này?", handleSaveNote)}
+                  >
+                    <Check className="h-4 w-4" />
+                    {isSavingNote ? "Đang lưu" : "Lưu note"}
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-gray-800 text-sm">Ghi chú ({platformNotes.length})</h3>
+                  {platformNotes.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-200 px-3 py-4 text-center text-sm text-gray-400">
+                      Chưa có ghi chú
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white divide-y divide-gray-100">
+                      {platformNotes.map((note, noteIndex) => (
+                        <div key={note.id} className="p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-emerald-700">
+                                #{noteIndex + 1}
+                              </span>
+                              <span className="text-xs font-medium text-gray-400">
+                                {fmtDate(note.created_at.slice(0, 10))}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-orange-500 hover:bg-orange-50"
+                                onClick={() => startEditNote(note)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                                onClick={() => openConfirm("Xoá ghi chú này?", () => doDeleteNote(note.id))}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {editingNoteId === note.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                rows={2}
+                                className="w-full h-16 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-300 resize-none"
+                                value={editNoteText}
+                                onChange={(e) => setEditNoteText(e.target.value)}
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={isSavingNote || !editNoteText.trim()}
+                                  onClick={() => openConfirm("Cập nhật ghi chú này?", () => handleUpdateNote(note.id))}
+                                >
+                                  <Check className="h-4 w-4" />
+                                  Lưu
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  disabled={isSavingNote}
+                                  onClick={() => { setEditingNoteId(null); setEditNoteText(""); }}
+                                >
+                                  Huỷ
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words text-sm leading-5 text-gray-700">
+                              {note.content || "Ghi chú trống"}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

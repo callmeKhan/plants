@@ -66,9 +66,17 @@ export interface PlantNote {
   updated_at: string;
 }
 
+export interface PlatformNote {
+  id: string;
+  platform_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Context ──
 
-export type Resource = "gardens" | "plants" | "platforms" | "locations" | "sales" | "notes" | "images";
+export type Resource = "gardens" | "plants" | "platforms" | "locations" | "sales" | "notes" | "images" | "platformNotes";
 
 interface Mutate {
   upsertGarden: (g: Garden) => void;
@@ -84,6 +92,8 @@ interface Mutate {
   removePlantNote: (id: string) => void;
   upsertPlantImage: (i: PlantNoteImage) => void;
   removePlantImage: (id: string) => void;
+  upsertPlatformNote: (n: PlatformNote) => void;
+  removePlatformNote: (id: string) => void;
 }
 
 interface DataContextType {
@@ -94,12 +104,14 @@ interface DataContextType {
   plantSales: PlantSale[];
   plantNotes: PlantNote[];
   plantImages: PlantNoteImage[];
+  platformNotes: PlatformNote[];
   locationsByPlatform: Map<string, PlantLocation[]>;
   locationsByPlant: Map<string, PlantLocation[]>;
   locationsById: Map<string, PlantLocation>;
   salesByPlant: Map<string, PlantSale[]>;
   notesByPlant: Map<string, PlantNote[]>;
   imagesByPlant: Map<string, PlantNoteImage[]>;
+  notesByPlatform: Map<string, PlatformNote[]>;
   refresh: (...resources: Resource[]) => Promise<void>;
   mutate: Mutate;
 }
@@ -113,6 +125,7 @@ const defaultMutate: Mutate = {
   upsertPlantSale: noop,
   upsertPlantNote: noop, removePlantNote: noop,
   upsertPlantImage: noop, removePlantImage: noop,
+  upsertPlatformNote: noop, removePlatformNote: noop,
 };
 
 const DataContext = createContext<DataContextType>({
@@ -123,12 +136,14 @@ const DataContext = createContext<DataContextType>({
   plantSales: [],
   plantNotes: [],
   plantImages: [],
+  platformNotes: [],
   locationsByPlatform: new Map(),
   locationsByPlant: new Map(),
   locationsById: new Map(),
   salesByPlant: new Map(),
   notesByPlant: new Map(),
   imagesByPlant: new Map(),
+  notesByPlatform: new Map(),
   refresh: async () => {},
   mutate: defaultMutate,
 });
@@ -141,9 +156,10 @@ const RESOURCE_CONFIG = {
   sales: { url: "/api/plant-sales" },
   notes: { url: "/api/plant-notes" },
   images: { url: "/api/plant-images" },
+  platformNotes: { url: "/api/platform-notes" },
 } as const;
 
-const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales", "notes", "images"];
+const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales", "notes", "images", "platformNotes"];
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [gardens, setGardens] = useState<Garden[]>([]);
@@ -153,6 +169,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [plantSales, setPlantSales] = useState<PlantSale[]>([]);
   const [plantNotes, setPlantNotes] = useState<PlantNote[]>([]);
   const [plantImages, setPlantImages] = useState<PlantNoteImage[]>([]);
+  const [platformNotes, setPlatformNotes] = useState<PlatformNote[]>([]);
 
   const setters = useMemo<Record<Resource, (data: never[]) => void>>(() => ({
     gardens: setGardens,
@@ -162,6 +179,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     sales: setPlantSales,
     notes: setPlantNotes,
     images: setPlantImages,
+    platformNotes: setPlatformNotes,
   }), []);
 
   const refresh = useCallback(async (...resources: Resource[]) => {
@@ -199,6 +217,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       removePlantNote: remove(setPlantNotes),
       upsertPlantImage: upsert(setPlantImages),
       removePlantImage: remove(setPlantImages),
+      upsertPlatformNote: upsert(setPlatformNotes),
+      removePlatformNote: remove(setPlatformNotes),
     };
   }, []);
 
@@ -265,12 +285,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return map;
   }, [plantImages]);
 
+  const notesByPlatform = useMemo(() => {
+    const map = new Map<string, PlatformNote[]>();
+    for (const note of platformNotes) {
+      const arr = map.get(note.platform_id);
+      if (arr) arr.push(note); else map.set(note.platform_id, [note]);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+    }
+    return map;
+  }, [platformNotes]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   return (
-    <DataContext value={{ gardens, plants, platforms, locations, plantSales, plantNotes, plantImages, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, refresh, mutate }}>
+    <DataContext value={{ gardens, plants, platforms, locations, plantSales, plantNotes, plantImages, platformNotes, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, notesByPlatform, refresh, mutate }}>
       {children}
     </DataContext>
   );

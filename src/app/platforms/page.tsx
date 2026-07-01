@@ -17,7 +17,7 @@ import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PlatformCapacityBadge } from "@/components/platform-capacity-badge";
-import { Trees, LayoutGrid, Trash2, Plus, ChevronDown } from "lucide-react";
+import { Trees, LayoutGrid, Trash2, Plus, ChevronDown, FileText } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
@@ -65,7 +65,7 @@ function PlatformsPageInner() {
     setExpandedFloors(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const { gardens, platforms, locationsByPlatform, locationsByPlant, refresh, mutate } = useData();
+  const { gardens, platforms, locationsByPlatform, locationsByPlant, notesByPlatform, refresh, mutate } = useData();
 
   async function handleAddGarden(e: React.FormEvent) {
     e.preventDefault();
@@ -372,6 +372,7 @@ function PlatformsPageInner() {
                         const used = platformLocs.reduce((s, l) => s + l.quantity, 0);
                         const free = round2(p.capacity - used);
                         const pct = p.capacity > 0 ? Math.round((used / p.capacity) * 100) : 0;
+                        const noteCount = notesByPlatform.get(p.id)?.length ?? 0;
                         const highlightColors = PLATFORM_HIGHLIGHT_BATCH_COLORS.filter((color) =>
                           platformLocs.some((loc) => normalizeBatchColor(loc.color) === color)
                         );
@@ -414,6 +415,12 @@ function PlatformsPageInner() {
                                   </div>
                                   ): <></>}
                                   <div className="flex items-center gap-1 shrink-0">
+                                    {noteCount > 0 && (
+                                      <Badge variant="warning" className="gap-1 text-[10px] px-1.5 py-0 h-5">
+                                        <FileText className="h-3 w-3" />
+                                        {noteCount}
+                                      </Badge>
+                                    )}
                                     <Badge variant={free === 0 ? "warning" : "secondary"} className="text-[10px] px-1.5 py-0 h-5">
                                       {isHangingPlatform(p) ? round2(p.capacity - free) : `${round2(free)}/${p.capacity}`}
                                     </Badge>
