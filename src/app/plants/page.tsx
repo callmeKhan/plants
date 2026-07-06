@@ -123,6 +123,10 @@ function PlantsPageInner() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterImage, setFilterImage] = useState<"all" | "has_image" | "no_image">("all");
   const [filterNotes, setFilterNotes] = useState<"all" | "has_note">("all");
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [filterNoTags, setFilterNoTags] = useState(false);
+  const [tagSearch, setTagSearch] = useState("");
+  const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [closingFilters, setClosingFilters] = useState(false);
 
@@ -306,6 +310,17 @@ function PlantsPageInner() {
   if (filterNotes === "has_note") {
     plantIds = plantIds.filter((pid) => (notesByPlant.get(pid)?.length ?? 0) > 0);
   }
+  if (filterNoTags) {
+    plantIds = plantIds.filter((pid) => {
+      const tags = plants?.find((p) => p.id === pid)?.tags ?? [];
+      return tags.length === 0;
+    });
+  } else if (filterTags.length > 0) {
+    plantIds = plantIds.filter((pid) => {
+      const tags = plants?.find((p) => p.id === pid)?.tags ?? [];
+      return filterTags.every((tag) => tags.includes(tag));
+    });
+  }
 
   plantIds = plantIds.sort((a, b) => {
     const nameA = plants?.find((p) => p.id === a)?.name ?? a;
@@ -313,7 +328,8 @@ function PlantsPageInner() {
     return nameA.localeCompare(nameB, "vi", { sensitivity: "base", numeric: true });
   });
   const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort((a, b) => a - b);
-  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all" || filterNotes !== "all";
+  const allTags = [...new Set((plants ?? []).flatMap((p) => p.tags ?? []))].sort((a, b) => a.localeCompare(b, "vi"));
+  const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all" || filterNotes !== "all" || filterTags.length > 0 || filterNoTags;
 
   return (
     <>
@@ -525,7 +541,7 @@ function PlantsPageInner() {
             </h2>
             {hasActiveFilter && (
               <button
-                onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); setFilterNotes("all"); }}
+                onClick={() => { setSearchQuery(""); setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); setFilterNotes("all"); setFilterTags([]); setFilterNoTags(false); setTagSearch("");}}
                 className="text-xs text-emerald-600 flex items-center gap-1"
               >
                 <X className="w-3 h-3" /> Bỏ lọc
@@ -553,7 +569,7 @@ function PlantsPageInner() {
               }}
             >
               <SlidersHorizontal className="w-4 h-4" />
-              {(filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all" || filterNotes !== "all") && (
+              {(filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all" || filterNotes !== "all" || filterTags.length > 0 || filterNoTags) && (
                 <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
               )}
             </button>
@@ -577,7 +593,7 @@ function PlantsPageInner() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">Bộ lọc</h3>
                   <button
-                    onClick={() => { setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); setFilterNotes("all"); }}
+                    onClick={() => { setFilterStock("all"); setFilterPotSize([]); setFilterStatus(""); setFilterImage("all"); setFilterNotes("all"); setFilterTags([]); setFilterNoTags(false); setTagSearch(""); }}
                     className="text-xs text-gray-400 hover:text-gray-600"
                   >
                     Xóa tất cả
@@ -635,6 +651,87 @@ function PlantsPageInner() {
                     })}
                   </div>
                 </div>
+
+                {/* Tag filter */}
+                {allTags.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Đặc điểm cây</p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <button
+                        onClick={() => setFilterNoTags((v) => {
+                          const next = !v;
+                          if (next) { setFilterTags([]); setTagSearch(""); }
+                          return next;
+                        })}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                        style={{
+                          backgroundColor: filterNoTags ? "#dc2626" : "#f3f4f6",
+                          color: filterNoTags ? "#fff" : "#6b7280",
+                        }}
+                      >
+                        Chưa có đặc điểm
+                      </button>
+                    </div>
+                    {!filterNoTags && (
+                      <>
+                        {filterTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {filterTags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-white"
+                                style={{ backgroundColor: "#0d9488" }}
+                              >
+                                {tag}
+                                <button
+                                  type="button"
+                                  onClick={() => setFilterTags((prev) => prev.filter((t) => t !== tag))}
+                                  aria-label={`Bỏ đặc điểm ${tag}`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="relative">
+                          <div className="flex items-center border border-gray-200 rounded-xl bg-white px-3 h-10 gap-2">
+                            <Search className="w-4 h-4 text-gray-400 shrink-0" />
+                            <input
+                              className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0"
+                              placeholder="Tìm đặc điểm cây..."
+                              value={tagSearch}
+                              onChange={(e) => { setTagSearch(e.target.value); setShowTagDropdown(true); }}
+                              onFocus={() => setShowTagDropdown(true)}
+                              onBlur={() => setTimeout(() => setShowTagDropdown(false), 150)}
+                            />
+                          </div>
+                          {showTagDropdown && (() => {
+                            const tagOptions = allTags.filter((tag) =>
+                              !filterTags.includes(tag) &&
+                              tag.toLowerCase().includes(tagSearch.trim().toLowerCase())
+                            );
+                            return (
+                              <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl max-h-40 overflow-y-auto text-sm divide-y divide-gray-50 shadow">
+                                {tagOptions.length === 0 ? (
+                                  <li className="px-3 py-2 text-gray-400 text-center">Không tìm thấy</li>
+                                ) : tagOptions.map((tag) => (
+                                  <li
+                                    key={tag}
+                                    className="px-3 py-2 cursor-pointer hover:bg-emerald-50 text-gray-800"
+                                    onMouseDown={() => { setFilterTags((prev) => [...prev, tag]); setTagSearch(""); }}
+                                  >
+                                    {tag}
+                                  </li>
+                                ))}
+                              </ul>
+                            );
+                          })()}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {/* Status filter */}
                 <div>

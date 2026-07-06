@@ -15,6 +15,7 @@ export interface Plant {
   name: string;
   total_quantity: number;
   image_url: string;
+  tags?: string[];
 }
 
 export interface Platform {
@@ -74,9 +75,18 @@ export interface PlatformNote {
   updated_at: string;
 }
 
+export interface HomeTask {
+  id: string;
+  content: string;
+  done: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Context ──
 
-export type Resource = "gardens" | "plants" | "platforms" | "locations" | "sales" | "notes" | "images" | "platformNotes";
+export type Resource = "gardens" | "plants" | "platforms" | "locations" | "sales" | "notes" | "images" | "platformNotes" | "homeTasks";
 
 interface Mutate {
   upsertGarden: (g: Garden) => void;
@@ -94,6 +104,8 @@ interface Mutate {
   removePlantImage: (id: string) => void;
   upsertPlatformNote: (n: PlatformNote) => void;
   removePlatformNote: (id: string) => void;
+  upsertHomeTask: (t: HomeTask) => void;
+  removeHomeTask: (id: string) => void;
 }
 
 interface DataContextType {
@@ -105,6 +117,7 @@ interface DataContextType {
   plantNotes: PlantNote[];
   plantImages: PlantNoteImage[];
   platformNotes: PlatformNote[];
+  homeTasks: HomeTask[];
   locationsByPlatform: Map<string, PlantLocation[]>;
   locationsByPlant: Map<string, PlantLocation[]>;
   locationsById: Map<string, PlantLocation>;
@@ -126,6 +139,7 @@ const defaultMutate: Mutate = {
   upsertPlantNote: noop, removePlantNote: noop,
   upsertPlantImage: noop, removePlantImage: noop,
   upsertPlatformNote: noop, removePlatformNote: noop,
+  upsertHomeTask: noop, removeHomeTask: noop,
 };
 
 const DataContext = createContext<DataContextType>({
@@ -137,6 +151,7 @@ const DataContext = createContext<DataContextType>({
   plantNotes: [],
   plantImages: [],
   platformNotes: [],
+  homeTasks: [],
   locationsByPlatform: new Map(),
   locationsByPlant: new Map(),
   locationsById: new Map(),
@@ -157,9 +172,10 @@ const RESOURCE_CONFIG = {
   notes: { url: "/api/plant-notes" },
   images: { url: "/api/plant-images" },
   platformNotes: { url: "/api/platform-notes" },
+  homeTasks: { url: "/api/home-tasks" },
 } as const;
 
-const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales", "notes", "images", "platformNotes"];
+const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales", "notes", "images", "platformNotes", "homeTasks"];
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [gardens, setGardens] = useState<Garden[]>([]);
@@ -170,6 +186,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [plantNotes, setPlantNotes] = useState<PlantNote[]>([]);
   const [plantImages, setPlantImages] = useState<PlantNoteImage[]>([]);
   const [platformNotes, setPlatformNotes] = useState<PlatformNote[]>([]);
+  const [homeTasks, setHomeTasks] = useState<HomeTask[]>([]);
 
   const setters = useMemo<Record<Resource, (data: never[]) => void>>(() => ({
     gardens: setGardens,
@@ -180,6 +197,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     notes: setPlantNotes,
     images: setPlantImages,
     platformNotes: setPlatformNotes,
+    homeTasks: setHomeTasks,
   }), []);
 
   const refresh = useCallback(async (...resources: Resource[]) => {
@@ -219,6 +237,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       removePlantImage: remove(setPlantImages),
       upsertPlatformNote: upsert(setPlatformNotes),
       removePlatformNote: remove(setPlatformNotes),
+      upsertHomeTask: upsert(setHomeTasks),
+      removeHomeTask: remove(setHomeTasks),
     };
   }, []);
 
@@ -297,12 +317,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return map;
   }, [platformNotes]);
 
+  const sortedHomeTasks = useMemo(() => {
+    return [...homeTasks].sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      if (!a.done) {
+        const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+        return orderDiff || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id);
+      }
+      return b.updated_at.localeCompare(a.updated_at) || b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id);
+    });
+  }, [homeTasks]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   return (
-    <DataContext value={{ gardens, plants, platforms, locations, plantSales, plantNotes, plantImages, platformNotes, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, notesByPlatform, refresh, mutate }}>
+    <DataContext value={{ gardens, plants, platforms, locations, plantSales, plantNotes, plantImages, platformNotes, homeTasks: sortedHomeTasks, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, notesByPlatform, refresh, mutate }}>
       {children}
     </DataContext>
   );

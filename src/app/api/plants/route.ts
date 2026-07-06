@@ -45,11 +45,11 @@ export async function PUT(request: Request) {
     if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 
     const body = await request.json();
-    const { name, total_quantity, image_url } = body;
+    const { name, total_quantity, image_url, tags } = body;
 
     const { data, error } = await supabase
       .from("plants")
-      .update({ name, total_quantity, image_url })
+      .update({ name, total_quantity, image_url, tags })
       .eq("id", id)
       .select()
       .single();

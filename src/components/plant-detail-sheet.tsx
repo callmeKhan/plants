@@ -16,7 +16,7 @@ import { Toast } from "@/components/ui/toast";
 
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search,
-  DollarSign, FileText, Images, Maximize2, RotateCcw, Upload, ChevronLeft, ChevronRight, Star,
+  DollarSign, FileText, Images, Maximize2, RotateCcw, Upload, ChevronLeft, ChevronRight, Star, Plus,
 } from "lucide-react";
 import { useConfirm } from "@/components/ui/confirm-modal";
 
@@ -156,6 +156,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState("");
 
+  // Tags
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [tagInput, setTagInput] = useState("");
+  const [isSavingTags, setIsSavingTags] = useState(false);
+
   // Notes
   const [activeTab, setActiveTab] = useState<DetailTab>("batches");
   const [selectedDetailImage, setSelectedDetailImage] = useState<SelectedDetailImage>(null);
@@ -167,8 +172,6 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isSavingImages, setIsSavingImages] = useState(false);
   const plantImageFilesRef = useRef<PlantImageDraft[]>([]);
-  const imageSwipeStartXRef = useRef<number | null>(null);
-  const imageSwipeDidMoveRef = useRef(false);
 
   // Edit batch
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
@@ -193,6 +196,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     imageNumber: index + 1,
     image,
   })), [imagesByPlant, plantId]);
+  const allPlantTags = useMemo(() => {
+    const all = new Set<string>();
+    plants.forEach((p) => (p.tags ?? []).forEach((tag) => all.add(tag)));
+    return [...all].sort((a, b) => a.localeCompare(b, "vi"));
+  }, [plants]);
   const plantMaxImages = getPlantMaxImages();
   const remainingImageSlots = Math.max(0, plantMaxImages - detailImages.length);
   const remainingDraftImageSlots = Math.max(0, remainingImageSlots - plantImageFiles.length);
@@ -273,6 +281,38 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     } catch {
       setToast({ text: "Lỗi kết nối", type: "error" });
     }
+  }
+
+  async function saveTags(nextTags: string[]) {
+    if (!plant) return;
+    setIsSavingTags(true);
+    try {
+      const res = await fetch(`/api/plants?id=${plantId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...plant, tags: nextTags }),
+      });
+      if (!res.ok) throw new Error("Cannot update tags");
+      mutate.upsertPlant(await res.json());
+    } catch {
+      setToast({ text: "Lỗi cập nhật đặc điểm cây", type: "error" });
+      await refresh("plants");
+    } finally {
+      setIsSavingTags(false);
+    }
+  }
+
+  function addTag(raw: string) {
+    const tag = raw.trim();
+    setTagInput("");
+    if (!tag) return;
+    const tags = plant?.tags ?? [];
+    if (tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return;
+    saveTags([...tags, tag]);
+  }
+
+  function removeTag(tag: string) {
+    saveTags((plant?.tags ?? []).filter((t) => t !== tag));
   }
 
   function handleSelectPlantImageFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -521,47 +561,12 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   }
 
   function openDisplayedImageLarge() {
-    if (imageSwipeDidMoveRef.current) {
-      imageSwipeDidMoveRef.current = false;
-      return;
-    }
-
     if (selectedDetailImage) {
       setLargeImage(selectedDetailImage);
       return;
     }
 
     setLargeImage({ src: plant?.image_url, alt: plant?.name ?? "Plant" });
-  }
-
-  function handleImageSwipeStart(e: React.TouchEvent) {
-    imageSwipeStartXRef.current = e.touches[0]?.clientX ?? null;
-  }
-
-  function handleDisplayedImageSwipeEnd(e: React.TouchEvent) {
-    const startX = imageSwipeStartXRef.current;
-    imageSwipeStartXRef.current = null;
-    const endX = e.changedTouches[0]?.clientX;
-    if (startX == null || endX == null) return;
-
-    const deltaX = endX - startX;
-    if (Math.abs(deltaX) < 48) return;
-
-    imageSwipeDidMoveRef.current = true;
-    showAdjacentDetailImage(selectedDetailImage?.imageId, deltaX < 0 ? 1 : -1);
-  }
-
-  function handleLargeImageSwipeEnd(e: React.TouchEvent) {
-    const startX = imageSwipeStartXRef.current;
-    imageSwipeStartXRef.current = null;
-    const endX = e.changedTouches[0]?.clientX;
-    if (startX == null || endX == null) return;
-
-    const deltaX = endX - startX;
-    if (Math.abs(deltaX) < 48) return;
-
-    imageSwipeDidMoveRef.current = true;
-    showAdjacentDetailImage(largeImage?.imageId, deltaX < 0 ? 1 : -1, true);
   }
 
   function selectDetailImage(image: PlantNoteImage, imageNumber: number) {
@@ -705,6 +710,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   }
 
   const usedSizes = locations.map((l) => l.pot_size);
+  const plantTags = plant.tags ?? [];
+  const tagSuggestions = allPlantTags.filter((tag) =>
+    !plantTags.some((t) => t.toLowerCase() === tag.toLowerCase()) &&
+    tag.toLowerCase().includes(tagInput.trim().toLowerCase())
+  );
   const mainImageSrc = selectedDetailImage?.src ?? plant.image_url;
   const mainImageAlt = selectedDetailImage?.alt ?? plant.name;
   const largeImageDetailIndex = largeImage?.imageId
@@ -781,97 +791,171 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
           {/* Scrollable content */}
           <div className="overflow-y-auto px-5 pb-6 space-y-4 pt-4">
 
-            {/* Image */}
-            <div className="relative rounded-2xl overflow-hidden bg-gray-50 aspect-square w-full">
-              <button
-                type="button"
-                className="absolute inset-0 block cursor-zoom-in"
-                onClick={openDisplayedImageLarge}
-                onTouchStart={handleImageSwipeStart}
-                onTouchEnd={handleDisplayedImageSwipeEnd}
-                aria-label="Xem ảnh lớn"
-              >
-                <PlantImage
-                  src={mainImageSrc}
-                  alt={mainImageAlt}
-                  sizes="(max-width: 640px) calc(100vw - 40px), 472px"
-                />
-                <span className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow" aria-hidden="true">
-                  <Maximize2 className="h-4 w-4" />
-                </span>
-              </button>
-              {selectedDetailImage && (
+            {/* Image: main on the left, vertical thumbnail list on the right */}
+            <div className="flex gap-2">
+              <div className="relative rounded-2xl overflow-hidden bg-gray-50 aspect-square flex-1 min-w-0">
                 <button
                   type="button"
-                  className="absolute left-3 top-3 h-9 rounded-full bg-white/90 px-3 text-xs font-semibold text-gray-700 shadow flex items-center gap-1.5"
-                  onClick={() => setSelectedDetailImage(null)}
+                  className="absolute inset-0 block cursor-zoom-in"
+                  onClick={openDisplayedImageLarge}
+                  aria-label="Xem ảnh lớn"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Hình chính
+                  <PlantImage
+                    src={mainImageSrc}
+                    alt={mainImageAlt}
+                    sizes={detailImages.length > 0
+                      ? "(max-width: 640px) calc(100vw - 128px), 384px"
+                      : "(max-width: 640px) calc(100vw - 40px), 472px"}
+                  />
+                  <span className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow" aria-hidden="true">
+                    <Maximize2 className="h-4 w-4" />
+                  </span>
                 </button>
-              )}
-              {selectedDetailImage && (
-                <span className="absolute right-3 top-3 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow">
-                  #{selectedDetailImage.imageNumber}
-                </span>
+                {selectedDetailImage && (
+                  <button
+                    type="button"
+                    className="absolute left-3 top-3 h-9 rounded-full bg-white/90 px-3 text-xs font-semibold text-gray-700 shadow flex items-center gap-1.5"
+                    onClick={() => setSelectedDetailImage(null)}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Hình chính
+                  </button>
+                )}
+                {selectedDetailImage && (
+                  <span className="absolute right-3 top-3 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow">
+                    #{selectedDetailImage.imageNumber}
+                  </span>
+                )}
+              </div>
+
+              {detailImages.length > 0 && (
+                <div className="relative w-20 shrink-0">
+                  <div className="absolute inset-0 flex flex-col gap-2 overflow-y-auto">
+                    {detailImages.map(({ imageNumber, image }, index) => (
+                      <div
+                        key={image.id}
+                        className={`relative aspect-square w-full shrink-0 overflow-hidden rounded-lg bg-gray-50 transition ${selectedDetailImage?.imageId === image.id ? "ring-2 ring-emerald-500 ring-offset-1" : "ring-1 ring-gray-100"}`}
+                      >
+                        <button
+                          type="button"
+                          className="absolute inset-0"
+                          onClick={() => selectDetailImage(image, imageNumber)}
+                          aria-label={`Xem ảnh ${imageNumber}`}
+                        >
+                          <PlantImage
+                            src={image.image_url}
+                            alt={`${plant.name} detail ${index + 1}`}
+                            sizes="80px"
+                          />
+                          <span className="absolute left-1 top-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow">
+                            #{imageNumber}
+                          </span>
+                        </button>
+                        {activeTab === "notes" && (
+                          <>
+                            <button
+                              type="button"
+                              className="absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-red-500 shadow"
+                              onClick={() => openConfirm("Xoá hình này?", () => doDeletePlantImage(image.id))}
+                              aria-label={`Xoá ảnh ${imageNumber}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                            {plant.image_url === image.image_url ? (
+                              <span
+                                className="absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow"
+                                aria-label={`Ảnh ${imageNumber} đang là ảnh chính`}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-amber-500 shadow"
+                                onClick={() => openConfirm("Đặt hình này làm hình chính?", () => doSetMainImage(image))}
+                                aria-label={`Đặt ảnh ${imageNumber} làm ảnh chính`}
+                              >
+                                <Star className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
-            {detailImages.length > 0 && (
-              <div className="grid grid-cols-5 gap-2">
-                {detailImages.map(({ imageNumber, image }, index) => (
-                  <div
-                    key={image.id}
-                    className={`relative aspect-square overflow-hidden rounded-lg bg-gray-50 transition ${selectedDetailImage?.imageId === image.id ? "ring-2 ring-emerald-500 ring-offset-1" : "ring-1 ring-gray-100"}`}
+            {/* Tags */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {plantTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    className="text-emerald-400 hover:text-emerald-700"
+                    onClick={() => openConfirm(`Xoá đặc điểm "${tag}"?`, () => removeTag(tag))}
+                    aria-label={`Xoá đặc điểm ${tag}`}
                   >
-                    <button
-                      type="button"
-                      className="absolute inset-0"
-                      onClick={() => selectDetailImage(image, imageNumber)}
-                      aria-label={`Xem ảnh ${imageNumber}`}
-                    >
-                      <PlantImage
-                        src={image.image_url}
-                        alt={`${plant.name} detail ${index + 1}`}
-                        sizes="(max-width: 640px) calc((100vw - 56px) / 5), 88px"
-                      />
-                      <span className="absolute left-1 top-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow">
-                        #{imageNumber}
-                      </span>
-                    </button>
-                    {activeTab === "notes" && (
-                      <>
-                        <button
-                          type="button"
-                          className="absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-red-500 shadow"
-                          onClick={() => openConfirm("Xoá hình này?", () => doDeletePlantImage(image.id))}
-                          aria-label={`Xoá ảnh ${imageNumber}`}
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              {showTagInput ? (
+                <div className="relative">
+                  <input
+                    autoFocus
+                    enterKeyHint="done"
+                    className="h-7 w-40 rounded-full border border-emerald-200 bg-white pl-2.5 pr-8 text-xs outline-none focus:border-emerald-400"
+                    placeholder="Đặc điểm mới"
+                    value={tagInput}
+                    disabled={isSavingTags}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); addTag(tagInput); }
+                      if (e.key === "Escape") { setShowTagInput(false); setTagInput(""); }
+                    }}
+                    onBlur={() => setTimeout(() => { setShowTagInput(false); setTagInput(""); }, 150)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-emerald-600 text-white disabled:opacity-40"
+                    disabled={isSavingTags || !tagInput.trim()}
+                    onMouseDown={(e) => { e.preventDefault(); addTag(tagInput); }}
+                    aria-label="Thêm đặc điểm"
+                  >
+                    <Check className="h-3 w-3" />
+                  </button>
+                  {tagSuggestions.length > 0 && (
+                    <ul className="absolute z-30 left-0 top-full mt-1 w-44 bg-white border border-gray-100 rounded-xl text-xs divide-y divide-gray-50 max-h-40 overflow-y-auto shadow">
+                      {tagSuggestions.map((tag) => (
+                        <li
+                          key={tag}
+                          className="px-3 py-1.5 cursor-pointer hover:bg-emerald-50 text-gray-800"
+                          onMouseDown={() => addTag(tag)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                        {plant.image_url === image.image_url ? (
-                          <span
-                            className="absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow"
-                            aria-label={`Ảnh ${imageNumber} đang là ảnh chính`}
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-amber-500 shadow"
-                            onClick={() => openConfirm("Đặt hình này làm hình chính?", () => doSetMainImage(image))}
-                            aria-label={`Đặt ảnh ${imageNumber} làm ảnh chính`}
-                          >
-                            <Star className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                          {tag}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-500 hover:border-emerald-300 hover:text-emerald-600"
+                  disabled={isSavingTags}
+                  onClick={() => setShowTagInput(true)}
+                >
+                  <Plus className="h-3 w-3" />
+                  Đặc điểm
+                </button>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1">
               <button
@@ -1285,8 +1369,6 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
           <div
             className="relative h-full w-full max-w-5xl"
             onClick={(e) => e.stopPropagation()}
-            onTouchStart={handleImageSwipeStart}
-            onTouchEnd={handleLargeImageSwipeEnd}
           >
             <button
               type="button"

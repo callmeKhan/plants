@@ -8,9 +8,10 @@ import { getPlatformCapacityStats } from "@/lib/platform-capacity";
 import { Badge } from "@/components/ui/badge";
 import { PlatformCapacityBadge } from "@/components/platform-capacity-badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
+import { HomeTaskSheet } from "@/components/home-task-sheet";
 import { MonthlySalesChart } from "@/components/monthly-sales-chart";
 import { PlantImage } from "@/components/plant-image";
-import { Leaf, Package, Trees, ChevronRight } from "lucide-react";
+import { Leaf, Package, Trees, ChevronRight, ClipboardList } from "lucide-react";
 
 /** Map fill percentage → GitHub-style green color */
 function fillColor(pct: number): string {
@@ -29,16 +30,19 @@ function fillLabel(pct: number): string {
   return "Đầy";
 }
 
+type TopPlantSortMode = "quantity" | "platforms" | "price" | "batches" | "sold";
+
 export default function Dashboard() {
-  const { gardens, platforms, locations, plants, locationsByPlatform, locationsByPlant } = useData();
+  const { gardens, platforms, locations, plants, homeTasks, locationsByPlatform, locationsByPlant, salesByPlant } = useData();
 
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
   const [detailPlantId, setDetailPlantId] = useState<string | null>(null);
   const [activeGardenId, setActiveGardenId] = useState<string | null>(null);
   const [topN, setTopN] = useState(5);
-  const [sortMode, setSortMode] = useState<"quantity" | "platforms" | "price" | "batches">("quantity");
+  const [sortMode, setSortMode] = useState<TopPlantSortMode>("quantity");
   const [sortAsc, setSortAsc] = useState(false);
+  const [showTaskSheet, setShowTaskSheet] = useState(false);
 
   const [highlightBatchId, setHighlightBatchId] = useState<string | null>(null);
 
@@ -74,7 +78,9 @@ export default function Dashboard() {
     const used = round2((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
     return p.capacity > 0 && used >= p.capacity;
   }).length;
-  const totalGardens = gardens?.length ?? 0;
+  const pendingHomeTasks = homeTasks.filter((task) => !task.done);
+  const completedHomeTaskCount = homeTasks.length - pendingHomeTasks.length;
+  const nextHomeTask = pendingHomeTasks[0];
 
   // ── Top plants ──
   const plantStats = (plants ?? [])
@@ -84,14 +90,16 @@ export default function Dashboard() {
       const platformCount = new Set(batches.map((b) => b.platform_id)).size;
       const maxPrice = round2(batches.reduce((m, l) => Math.max(m, l.price ?? 0), 0));
       const batchCount = batches.length;
-      return { ...p, total, platformCount, maxPrice, batchCount };
+      const soldTotal = round2((salesByPlant.get(p.id) ?? []).reduce((sum, sale) => sum + sale.quantity, 0));
+      return { ...p, total, platformCount, maxPrice, batchCount, soldTotal };
     })
-    .filter((p) => p.total > 0)
+    .filter((p) => sortMode === "sold" ? p.soldTotal > 0 : p.total > 0)
     .sort((a, b) => {
       let diff = 0;
       if (sortMode === "platforms") diff = b.platformCount - a.platformCount;
       else if (sortMode === "price") diff = b.maxPrice - a.maxPrice;
       else if (sortMode === "batches") diff = b.batchCount - a.batchCount;
+      else if (sortMode === "sold") diff = b.soldTotal - a.soldTotal;
       else diff = b.total - a.total;
       return sortAsc ? -diff : diff;
     })
@@ -164,13 +172,23 @@ export default function Dashboard() {
               </span>
             </div>
           </div>
-          <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 text-center">
+          <button
+            type="button"
+            className="rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 text-center transition-all hover:border-blue-200 hover:shadow-md active:scale-[0.99]"
+            onClick={() => setShowTaskSheet(true)}
+          >
             <div className="flex justify-center mb-1">
-              <Trees className="w-4 h-4 text-green-600" />
+              <ClipboardList className="w-4 h-4 text-blue-600" />
             </div>
-            <p className="text-xl font-bold text-gray-900">{totalGardens}</p>
-            <p className="text-[11px] text-gray-400">Vườn</p>
-          </div>
+            <p className="text-xl font-bold text-gray-900">
+              {pendingHomeTasks.length}
+              <br />
+              <span className="text-sm font-medium text-gray-400">{homeTasks.length}</span>
+            </p>
+            <p className="truncate text-[11px] text-gray-400">
+              {nextHomeTask ? nextHomeTask.content : completedHomeTaskCount > 0 ? "Đã xong hết" : "Công việc"}
+            </p>
+          </button>
         </div>
 
         {/* ── Monthly Sales Chart ── */}
@@ -352,6 +370,7 @@ export default function Dashboard() {
                 { key: "platforms", label: "Số sàn" },
                 { key: "price", label: "Giá nhập" },
                 { key: "batches", label: "Số đợt" },
+                { key: "sold", label: "Đã bán" },
               ] as const).map((opt) => (
                 <button
                   key={opt.key}
@@ -389,7 +408,12 @@ export default function Dashboard() {
                         {p.name}
                       </p>
                       <p className="text-[11px] text-gray-400">
-                        {p.total > 0 ? (
+                        {sortMode === "sold" ? (
+                          <>
+                            Đã bán {p.soldTotal} tấm
+                            {p.total > 0 ? ` · còn ${p.total} tấm` : " · hết hàng"}
+                          </>
+                        ) : p.total > 0 ? (
                           <>
                             {p.total} tấm · {p.platformCount} sàn
                             {sortMode === "price" && p.maxPrice > 0 && ` · ${p.maxPrice.toLocaleString()}đ`}
@@ -416,6 +440,10 @@ export default function Dashboard() {
           onClose={() => { setDetailPlantId(null); setHighlightBatchId(null); }}
           highlightBatchId={highlightBatchId ?? undefined}
         />
+      )}
+
+      {showTaskSheet && (
+        <HomeTaskSheet onClose={() => setShowTaskSheet(false)} />
       )}
 
       {/* Fixed-position tooltip */}
