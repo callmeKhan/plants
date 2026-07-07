@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import type { BatchColor } from "@/lib/batch-color";
 
 // ── Types (moved from db.ts) ──
@@ -178,6 +179,8 @@ const RESOURCE_CONFIG = {
 const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations", "sales", "notes", "images", "platformNotes", "homeTasks"];
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isStandaloneImportsRoute = pathname === "/imports" || pathname.startsWith("/imports/");
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [plants, setPlants] = useState<Plant[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
@@ -329,8 +332,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [homeTasks]);
 
   useEffect(() => {
+    if (isStandaloneImportsRoute) return;
     refresh();
-  }, [refresh]);
+  }, [isStandaloneImportsRoute, refresh]);
 
   return (
     <DataContext value={{ gardens, plants, platforms, locations, plantSales, plantNotes, plantImages, platformNotes, homeTasks: sortedHomeTasks, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, notesByPlatform, refresh, mutate }}>

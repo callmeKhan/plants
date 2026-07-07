@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { ShoppingCart, X, ChevronDown, ChevronUp } from "lucide-react";
 import { useData } from "@/lib/data";
 import { round2 } from "@/lib/number";
@@ -10,6 +11,7 @@ import { Toast } from "@/components/ui/toast";
 import type { PlantSale } from "@/lib/data";
 
 export function SellCartBar() {
+  const pathname = usePathname();
   const sellCart = useSellCart();
   const [openConfirm, confirmModal] = useConfirm();
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
@@ -18,7 +20,7 @@ export function SellCartBar() {
 
   const { locationsById, plants, platforms, gardens, mutate, refresh } = useData();
 
-  if (sellCart.length === 0) return null;
+  if (pathname === "/imports" || pathname.startsWith("/imports/") || sellCart.length === 0) return null;
 
   async function processSell() {
     if (sellCart.length === 0 || processing) return;

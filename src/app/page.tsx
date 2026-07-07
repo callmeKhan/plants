@@ -2,6 +2,7 @@
 
 import { useData } from "@/lib/data";
 import { useState, useRef, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { round2 } from "@/lib/number";
 import { getPlatformCapacityStats } from "@/lib/platform-capacity";
@@ -11,7 +12,7 @@ import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { HomeTaskSheet } from "@/components/home-task-sheet";
 import { MonthlySalesChart } from "@/components/monthly-sales-chart";
 import { PlantImage } from "@/components/plant-image";
-import { Leaf, Package, Trees, ChevronRight, ClipboardList } from "lucide-react";
+import { Leaf, Package, Trees, ChevronRight, ClipboardList, PackagePlus } from "lucide-react";
 
 /** Map fill percentage → GitHub-style green color */
 function fillColor(pct: number): string {
@@ -109,16 +110,26 @@ export default function Dashboard() {
     <>
       <div className="max-w-lg mx-auto space-y-5">
         {/* ── Title ── */}
-        <div className="flex items-center gap-3 pt-1">
-          <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shadow-sm shrink-0">
-            <Leaf className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shadow-sm shrink-0">
+              <Leaf className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">
+                Tổng quan
+              </h1>
+              <p className="text-xs text-gray-400">Bản đồ vườn & thống kê</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">
-              Tổng quan
-            </h1>
-            <p className="text-xs text-gray-400">Bản đồ vườn & thống kê</p>
-          </div>
+          <Link
+            href="/imports"
+            className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-amber-600 transition-all hover:border-amber-200 hover:shadow-md active:scale-[0.97]"
+            aria-label="Nhập phụ kiện"
+            title="Nhập phụ kiện"
+          >
+            <PackagePlus className="w-5 h-5" />
+          </Link>
         </div>
 
         {/* ── Summary Stats ── */}
