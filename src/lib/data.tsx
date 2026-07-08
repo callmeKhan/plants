@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import type { BatchColor } from "@/lib/batch-color";
 
@@ -181,6 +181,8 @@ const ALL_RESOURCES: Resource[] = ["gardens", "plants", "platforms", "locations"
 export function DataProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isStandaloneImportsRoute = pathname === "/imports" || pathname.startsWith("/imports/");
+  const loadedResourcesRef = useRef<Set<Resource>>(new Set());
+  const pendingInitialResourcesRef = useRef<Set<Resource>>(new Set());
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [plants, setPlants] = useState<Plant[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
@@ -208,11 +210,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await Promise.all(
       targets.map(async (r) => {
         const res = await fetch(RESOURCE_CONFIG[r].url);
-        if (res.ok) setters[r](await res.json());
+        if (res.ok) {
+          setters[r](await res.json());
+          loadedResourcesRef.current.add(r);
+        }
       })
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setters]);
+
+  const refreshMissing = useCallback(async () => {
+    const missingResources = ALL_RESOURCES.filter(
+      (resource) => !loadedResourcesRef.current.has(resource) && !pendingInitialResourcesRef.current.has(resource)
+    );
+
+    if (missingResources.length === 0) return;
+
+    missingResources.forEach((resource) => pendingInitialResourcesRef.current.add(resource));
+    try {
+      await refresh(...missingResources);
+    } finally {
+      missingResources.forEach((resource) => pendingInitialResourcesRef.current.delete(resource));
+    }
+  }, [refresh]);
 
   const mutate = useMemo<Mutate>(() => {
     function upsert<T extends { id: string }>(set: React.Dispatch<React.SetStateAction<T[]>>) {
@@ -333,8 +352,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isStandaloneImportsRoute) return;
-    refresh();
-  }, [isStandaloneImportsRoute, refresh]);
+    refreshMissing();
+  }, [isStandaloneImportsRoute, refreshMissing]);
 
   return (
     <DataContext value={{ gardens, plants, platforms, locations, plantSales, plantNotes, plantImages, platformNotes, homeTasks: sortedHomeTasks, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, notesByPlatform, refresh, mutate }}>

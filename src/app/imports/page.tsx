@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { v4 as uuidv4 } from "uuid";
 import {
-  CalendarDays,
   ChevronDown,
-  Coins,
+  MoreVertical,
   PackagePlus,
   Pencil,
   Save,
@@ -18,6 +17,7 @@ import { Toast, type ToastMsg } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
+import { Badge } from "@/components/ui/badge";
 
 type AccessoryImport = {
   id: string;
@@ -34,6 +34,14 @@ type ImportForm = {
   unitCost: string;
   importedDate: string;
   quantity: string;
+};
+
+type AccessoryImportGroup = {
+  key: string;
+  name: string;
+  batches: AccessoryImport[];
+  totalQuantity: number;
+  totalValue: number;
 };
 
 function todayStr() {
@@ -60,6 +68,16 @@ function sortImports(items: AccessoryImport[]) {
     if (dateDiff) return dateDiff;
     return b.created_at.localeCompare(a.created_at) || a.name.localeCompare(b.name, "vi");
   });
+}
+
+function sortBatches(items: AccessoryImport[]) {
+  return [...items].sort((a, b) => {
+    return b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id);
+  });
+}
+
+function accessoryKey(name: string) {
+  return name.trim().toLowerCase();
 }
 
 function toPayload(form: ImportForm) {
@@ -98,6 +116,8 @@ export default function ImportsPage() {
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -127,18 +147,47 @@ export default function ImportsPage() {
     return () => controller.abort();
   }, []);
 
-  const filteredItems = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return items;
-    return items.filter((item) => item.name.toLowerCase().includes(query));
-  }, [items, searchQuery]);
+  const accessoryGroups = useMemo<AccessoryImportGroup[]>(() => {
+    const map = new Map<string, AccessoryImportGroup>();
 
-  const totals = useMemo(() => {
-    const uniqueNames = new Set(filteredItems.map((item) => item.name.trim().toLowerCase())).size;
-    const totalQuantity = filteredItems.reduce((sum, item) => sum + item.quantity, 0);
-    const totalValue = filteredItems.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0);
-    return { uniqueNames, totalQuantity, totalValue };
-  }, [filteredItems]);
+    for (const item of items) {
+      const key = accessoryKey(item.name);
+      const existing = map.get(key);
+      if (existing) {
+        existing.batches.push(item);
+        existing.totalQuantity += item.quantity;
+        existing.totalValue += item.quantity * item.unit_cost;
+      } else {
+        map.set(key, {
+          key,
+          name: item.name,
+          batches: [item],
+          totalQuantity: item.quantity,
+          totalValue: item.quantity * item.unit_cost,
+        });
+      }
+    }
+
+    return Array.from(map.values())
+      .map((group) => ({ ...group, batches: sortBatches(group.batches) }))
+      .sort((a, b) => a.name.localeCompare(b.name, "vi", { sensitivity: "base", numeric: true }));
+  }, [items]);
+
+  const filteredGroups = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return accessoryGroups;
+    return accessoryGroups.filter((group) => group.name.toLowerCase().includes(query));
+  }, [accessoryGroups, searchQuery]);
+
+  const nameSuggestions = useMemo(() => {
+    const query = form.name.trim().toLowerCase();
+    return accessoryGroups
+      .filter((group) => {
+        if (!query) return false;
+        return group.name.toLowerCase().includes(query) && group.name.toLowerCase() !== query;
+      })
+      .slice(0, 8);
+  }, [accessoryGroups, form.name]);
 
   const updateForm = useCallback((field: keyof ImportForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -178,6 +227,7 @@ export default function ImportsPage() {
   }
 
   function startEdit(item: AccessoryImport) {
+    setOpenActionId(null);
     setEditingId(item.id);
     setEditForm({
       name: item.name,
@@ -214,6 +264,7 @@ export default function ImportsPage() {
   }
 
   function requestDelete(item: AccessoryImport) {
+    setOpenActionId(null);
     openConfirm(
       `Xoá lần nhập "${item.name}" ngày ${fmtDate(item.imported_date)}?`,
       async () => {
@@ -257,11 +308,38 @@ export default function ImportsPage() {
           <Card>
             <CardContent className="pt-4">
               <form onSubmit={handleSubmit} className="space-y-3">
-                <Input
-                  value={form.name}
-                  onChange={(e) => updateForm("name", e.target.value)}
-                  placeholder="📦 Tên mặt hàng"
-                />
+                <div className="relative">
+                  <Input
+                    value={form.name}
+                    onChange={(e) => {
+                      updateForm("name", e.target.value);
+                      setShowNameSuggestions(true);
+                    }}
+                    onFocus={() => setShowNameSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowNameSuggestions(false), 150)}
+                    placeholder="📦 Tên mặt hàng"
+                    autoComplete="off"
+                  />
+                  {showNameSuggestions && nameSuggestions.length > 0 && (
+                    <ul className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl max-h-48 overflow-y-auto text-sm divide-y divide-gray-50 shadow-sm">
+                      {nameSuggestions.map((group) => (
+                        <li
+                          key={group.key}
+                          className="px-4 py-2.5 hover:bg-amber-50 cursor-pointer flex items-center justify-between gap-3"
+                          onMouseDown={() => {
+                            updateForm("name", group.name);
+                            setShowNameSuggestions(false);
+                          }}
+                        >
+                          <span className="font-medium text-gray-800 truncate">{group.name}</span>
+                          <Badge variant="secondary" className="shrink-0">
+                            {group.batches.length} lần nhập
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
 
                 <div className="flex gap-2">
                   <Input
@@ -305,24 +383,6 @@ export default function ImportsPage() {
           </Card>
         </Collapse>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 text-center">
-            <PackagePlus className="w-4 h-4 text-amber-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-gray-900">{totals.uniqueNames}</p>
-            <p className="text-[11px] text-gray-400">Mặt hàng</p>
-          </div>
-          <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 text-center">
-            <CalendarDays className="w-4 h-4 text-blue-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-gray-900">{formatQty(totals.totalQuantity)}</p>
-            <p className="text-[11px] text-gray-400">Số lượng</p>
-          </div>
-          <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3 text-center">
-            <Coins className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
-            <p className="text-base font-bold text-gray-900 leading-6">{formatMoney(totals.totalValue)}</p>
-            <p className="text-[11px] text-gray-400">Tổng vốn</p>
-          </div>
-        </div>
-
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
@@ -344,7 +404,14 @@ export default function ImportsPage() {
         </div>
 
         <div className="space-y-2">
-          <h2 className="font-semibold text-gray-800 text-sm">Danh sách nhập</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+              Danh sách
+              <Badge variant="default">
+                {searchQuery.trim() ? `${filteredGroups.length}/${accessoryGroups.length}` : accessoryGroups.length} mặt hàng
+              </Badge>
+            </h2>
+          </div>
 
           {loading && (
             <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-4 py-6 text-center text-sm text-gray-400">
@@ -352,7 +419,7 @@ export default function ImportsPage() {
             </div>
           )}
 
-          {!loading && filteredItems.length === 0 && (
+          {!loading && filteredGroups.length === 0 && (
             <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-4 py-8 text-center">
               <PackagePlus className="w-8 h-8 text-gray-300 mx-auto mb-2" />
               <p className="text-sm text-gray-400">
@@ -361,105 +428,158 @@ export default function ImportsPage() {
             </div>
           )}
 
-          {!loading && filteredItems.map((item) => {
-            const isEditing = editingId === item.id;
-
-            if (isEditing) {
-              return (
-                <div key={item.id} className="rounded-2xl bg-white border border-amber-100 shadow-sm p-3 space-y-3">
-                  <Input
-                    value={editForm.name}
-                    onChange={(e) => updateEditForm("name", e.target.value)}
-                    className="h-10"
-                  />
-                  <div className="grid grid-cols-3 gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      inputMode="decimal"
-                      value={editForm.unitCost}
-                      onChange={(e) => updateEditForm("unitCost", e.target.value)}
-                      className="h-10"
-                    />
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      value={editForm.quantity}
-                      onChange={(e) => updateEditForm("quantity", e.target.value)}
-                      className="h-10"
-                    />
-                    <Input
-                      type="date"
-                      value={editForm.importedDate}
-                      onChange={(e) => updateEditForm("importedDate", e.target.value)}
-                      className="h-10 px-2"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500"
-                      onClick={() => setEditingId(null)}
-                      aria-label="Huỷ sửa"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white disabled:bg-emerald-300"
-                      disabled={saving}
-                      onClick={() => saveEdit(item.id)}
-                      aria-label="Lưu sửa"
-                    >
-                      <Save className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-3"
-              >
-                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                  <PackagePlus className="w-5 h-5 text-amber-500" />
+          {!loading && filteredGroups.map((group) => (
+            <Card key={group.key} className="hover:shadow-md hover:border-amber-200 transition-all duration-200">
+              <CardContent className="py-3 px-4 flex items-start gap-3">
+                <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <PackagePlus className="w-6 h-6 text-amber-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 text-sm truncate">{item.name}</p>
-                  <p className="text-[11px] text-gray-400">
-                    {fmtDate(item.imported_date)} · {formatQty(item.quantity)} cái · {formatMoney(item.unit_cost)}
-                  </p>
-                  <p className="text-[11px] font-semibold text-emerald-600">
-                    {formatMoney(item.quantity * item.unit_cost)}
-                  </p>
+                  <div className="flex items-start gap-2 mb-1.5 justify-between">
+                    <span className="font-semibold text-gray-900 truncate min-w-0">{group.name}</span>
+                    <div className="flex items-center justify-end gap-1.5 shrink-0 flex-wrap max-w-[58%]">
+                      <Badge variant="warning">{group.batches.length} lần nhập</Badge>
+                      <Badge variant="default" className="max-w-full whitespace-normal break-all leading-tight text-right">
+                        ×{formatQty(group.totalQuantity)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {group.batches.map((item) => {
+                      const isEditing = editingId === item.id;
+
+                      if (isEditing) {
+                        return (
+                          <div key={item.id} className="rounded-xl border border-amber-100 bg-amber-50/40 p-2 space-y-2">
+                            <Input
+                              value={editForm.name}
+                              onChange={(e) => updateEditForm("name", e.target.value)}
+                              className="h-10"
+                            />
+                            <div className="grid grid-cols-3 gap-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                inputMode="decimal"
+                                value={editForm.quantity}
+                                onChange={(e) => updateEditForm("quantity", e.target.value)}
+                                className="h-10"
+                              />
+                              <Input
+                                type="number"
+                                min={0}
+                                inputMode="decimal"
+                                value={editForm.unitCost}
+                                onChange={(e) => updateEditForm("unitCost", e.target.value)}
+                                className="h-10"
+                              />
+                              <Input
+                                type="date"
+                                value={editForm.importedDate}
+                                onChange={(e) => updateEditForm("importedDate", e.target.value)}
+                                className="h-10 px-2"
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                className="w-9 h-9 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-gray-500"
+                                onClick={() => setEditingId(null)}
+                                aria-label="Huỷ sửa"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white disabled:bg-emerald-300"
+                                disabled={saving}
+                                onClick={() => saveEdit(item.id)}
+                                aria-label="Lưu sửa"
+                              >
+                                <Save className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="text-xs text-gray-500 grid grid-cols-[minmax(0,1fr)_minmax(0,42%)_2rem] items-center gap-x-2 border-b border-gray-100 px-2 py-2 last:border-b-0"
+                        >
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-semibold text-gray-800">{fmtDate(item.imported_date)}</span>
+                            <span className="break-all leading-snug">
+                              sl: {formatQty(item.quantity)}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex flex-col items-end text-right leading-tight">
+                            <span className="max-w-full break-all font-semibold text-gray-900">{formatMoney(item.unit_cost)}</span>
+                            <span className="max-w-full break-all text-[11px] font-semibold text-emerald-600">
+                              {formatMoney(item.quantity * item.unit_cost)}
+                            </span>
+                          </div>
+                          <div
+                            className="relative justify-self-end"
+                            onBlur={(e) => {
+                              const nextFocus = e.relatedTarget;
+                              if (!(nextFocus instanceof Node) || !e.currentTarget.contains(nextFocus)) {
+                                setOpenActionId(null);
+                              }
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100"
+                              onClick={() => setOpenActionId((current) => (current === item.id ? null : item.id))}
+                              aria-label={`Mở thao tác cho ${item.name} ngày ${fmtDate(item.imported_date)}`}
+                              aria-haspopup="menu"
+                              aria-expanded={openActionId === item.id}
+                              title="Thao tác"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                            {openActionId === item.id && (
+                              <div
+                                role="menu"
+                                className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="h-9 w-full px-3 flex items-center gap-2 text-left text-xs font-medium text-gray-600 hover:bg-gray-50"
+                                  onClick={() => startEdit(item)}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  Sửa
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="h-9 w-full px-3 flex items-center gap-2 text-left text-xs font-medium text-red-500 hover:bg-red-50"
+                                  onClick={() => requestDelete(item)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Xoá
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-end px-2 pt-1 text-[11px] font-semibold text-gray-500 text-right min-w-0">
+                      <span className="min-w-0 break-words">
+                        Tổng vốn: <span className="text-emerald-600 break-all">{formatMoney(group.totalValue)}</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  <button
-                    type="button"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100"
-                    onClick={() => startEdit(item)}
-                    aria-label={`Sửa ${item.name}`}
-                    title="Sửa"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50"
-                    onClick={() => requestDelete(item)}
-                    aria-label={`Xoá ${item.name}`}
-                    title="Xoá"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
 
