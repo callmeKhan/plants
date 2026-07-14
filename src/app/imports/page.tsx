@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { v4 as uuidv4 } from "uuid";
 import {
+  BarChart3,
   ChevronDown,
   MoreVertical,
   PackagePlus,
@@ -18,6 +20,7 @@ import { useConfirm } from "@/components/ui/confirm-modal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { Badge } from "@/components/ui/badge";
+import { invalidateAccessoryImportStatsCache } from "@/lib/accessory-import-stats-cache";
 
 type AccessoryImport = {
   id: string;
@@ -216,6 +219,7 @@ export default function ImportsPage() {
       });
       if (!res.ok) throw new Error("Failed to save accessory import");
       const saved = (await res.json()) as AccessoryImport;
+      invalidateAccessoryImportStatsCache();
       setItems((current) => sortImports([...current, saved]));
       setForm({ name: "", unitCost: "", importedDate: todayStr(), quantity: "" });
       setToast({ text: "Đã lưu lần nhập phụ kiện", type: "success" });
@@ -253,6 +257,7 @@ export default function ImportsPage() {
       });
       if (!res.ok) throw new Error("Failed to update accessory import");
       const saved = (await res.json()) as AccessoryImport;
+      invalidateAccessoryImportStatsCache();
       setItems((current) => sortImports(current.map((item) => (item.id === itemId ? saved : item))));
       setEditingId(null);
       setToast({ text: "Đã cập nhật lần nhập", type: "success" });
@@ -271,6 +276,7 @@ export default function ImportsPage() {
         try {
           const res = await fetch(`/api/accessory-imports?id=${item.id}`, { method: "DELETE" });
           if (!res.ok) throw new Error("Failed to delete accessory import");
+          invalidateAccessoryImportStatsCache();
           setItems((current) => current.filter((currentItem) => currentItem.id !== item.id));
           if (editingId === item.id) setEditingId(null);
           setToast({ text: "Đã xoá lần nhập", type: "success" });
@@ -286,23 +292,34 @@ export default function ImportsPage() {
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
       <div className="max-w-lg mx-auto space-y-4">
-        <button
-          type="button"
-          onClick={() => setOpenForm((v) => !v)}
-          className="w-full flex items-center gap-3 pt-1 text-left"
-        >
-          <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shadow-sm shrink-0">
-            <PackagePlus className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Nhập phụ kiện</h1>
-            <p className="text-xs text-gray-400">Kéo cắt, chậu, dây, băng keo</p>
-          </div>
-          <ChevronDown
-            className="w-5 h-5 text-gray-400 transition-transform duration-200"
-            style={{ transform: openForm ? "rotate(180deg)" : "rotate(0deg)" }}
-          />
-        </button>
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => setOpenForm((v) => !v)}
+            className="min-w-0 flex-1 flex items-center gap-3 text-left"
+          >
+            <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shadow-sm shrink-0">
+              <PackagePlus className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">Nhập phụ kiện</h1>
+              <p className="text-xs text-gray-400">Kéo cắt, chậu, dây, băng keo</p>
+            </div>
+            <ChevronDown
+              className="w-5 h-5 text-gray-400 transition-transform duration-200 shrink-0"
+              style={{ transform: openForm ? "rotate(180deg)" : "rotate(0deg)" }}
+            />
+          </button>
+          <Link
+            href="/imports/stats"
+            prefetch={false}
+            className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-sky-600 transition-all hover:border-sky-200 hover:shadow-md active:scale-[0.97] shrink-0"
+            aria-label="Thống kê nhập phụ kiện"
+            title="Thống kê"
+          >
+            <BarChart3 className="w-5 h-5" />
+          </Link>
+        </div>
 
         <Collapse open={openForm}>
           <Card>

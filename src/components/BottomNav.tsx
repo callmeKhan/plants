@@ -23,7 +23,9 @@ export default function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2 z-[100]">
       {visibleTabs.map((tab) => {
-        const active = pathname === tab.href;
+        const active =
+          pathname === tab.href ||
+          (tab.href !== "/" && pathname.startsWith(`${tab.href}/`));
         return (
           <Link
             key={tab.href}
