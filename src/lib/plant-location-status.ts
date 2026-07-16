@@ -1,14 +1,5 @@
 export const PLANT_LOCATION_STATUSES = [
   {
-    value: "trồng lại",
-    label: "Trồng lại",
-    icon: "🌱",
-    badgeBgColor: "#fef3c7",
-    badgeTextColor: "#92400e",
-    filterActiveBgColor: "#f59e0b",
-    iconBgColor: "rgba(255, 237, 164, 1)",
-  },
-  {
     value: "sang chậu",
     label: "Sang chậu",
     icon: "🪴",
@@ -16,6 +7,15 @@ export const PLANT_LOCATION_STATUSES = [
     badgeTextColor: "#1d4ed8",
     filterActiveBgColor: "#2563eb",
     iconBgColor: "rgba(162, 203, 255, 1)",
+  },
+  {
+    value: "trồng lại",
+    label: "Trồng lại",
+    icon: "🌱",
+    badgeBgColor: "#fef3c7",
+    badgeTextColor: "#92400e",
+    filterActiveBgColor: "#f59e0b",
+    iconBgColor: "rgba(255, 237, 164, 1)",
   },
   {
     value: "treo",

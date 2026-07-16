@@ -30,6 +30,7 @@ import {
 } from "@/lib/batch-color";
 import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
 import { getPlantLocationStatusMeta } from "@/lib/plant-location-status";
+import { formatPotSize } from "@/lib/pot-size";
 import { useSellCart, sellCartStore } from "@/lib/sell-cart";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -879,14 +880,14 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                             <p className="font-semibold text-gray-900 text-sm truncate">{plant?.name ?? loc.plant_id}</p>
                             {isReordering ? (
                               <p className="text-xs text-gray-500 mt-0.5 truncate">
-                                {inCartQty > 0 ? `${effectiveQty}/${loc.quantity}` : loc.quantity} tấm · chậu {loc.pot_size}
+                                {inCartQty > 0 ? `${effectiveQty}/${loc.quantity}` : loc.quantity} tấm · {formatPotSize(loc.pot_size)}
                               </p>
                             ) : (
                               <div className="flex justify-start items-center gap-1.5 text-xs text-gray-500 mt-0.5">
                                 <span style={{ width: "65px" }}>
                                   {inCartQty > 0 ? `${effectiveQty}/${loc.quantity}` : loc.quantity} tấm
                                 </span>
-                                <span style={{ width: "65px" }}>chậu {loc.pot_size}</span>
+                                <span style={{ width: "65px" }}>{formatPotSize(loc.pot_size)}</span>
                                 <span>{fmtDate(loc.planted_date)}</span>
                               </div>
                             )}
@@ -995,7 +996,7 @@ export function PlatformDetailSheet({ platformId, onClose, onShowPlantDetail, hi
                               <label className="text-xs text-emerald-800 shrink-0">Số lượng bán:</label>
                               <input
                                 type="number"
-                                min={1}
+                                min={0}
                                 max={effectiveQty}
                                 step="any"
                                 autoFocus

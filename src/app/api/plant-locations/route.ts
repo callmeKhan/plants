@@ -5,6 +5,7 @@ import { round2 } from "@/lib/number";
 import { isBatchColor, normalizeBatchColor } from "@/lib/batch-color";
 import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
 import { currentDateString } from "@/lib/time";
+import { isValidEncodedPotSize } from "@/lib/pot-size";
 
 function normalizeStatus(status: unknown) {
   return typeof status === "string" && status.trim() ? status.trim() : null;
@@ -56,12 +57,15 @@ export async function POST(request: Request) {
     if (color != null && !isBatchColor(color)) {
       return NextResponse.json({ error: "color must be white, yellow, or red" }, { status: 400 });
     }
+    if (pot_size != null && !isValidEncodedPotSize(pot_size)) {
+      return NextResponse.json({ error: "pot_size must be a non-zero int4" }, { status: 400 });
+    }
 
     const locationColor = normalizeBatchColor(color);
     const forcedStatus = await getForcedStatusForPlatform(platform_id);
     const locationStatus = forcedStatus ?? normalizeStatus(status);
     const locationPrice = price ?? null;
-    const locationPotSize = pot_size || 14;
+    const locationPotSize = pot_size ?? 14;
     const locationPlantedDate = planted_date || "";
 
     // Merge only if same plant + platform + pot_size + planted_date + color + status + price
@@ -142,6 +146,9 @@ export async function PUT(request: Request) {
 
     if (color != null && !isBatchColor(color)) {
       return NextResponse.json({ error: "color must be white, yellow, or red" }, { status: 400 });
+    }
+    if (pot_size != null && !isValidEncodedPotSize(pot_size)) {
+      return NextResponse.json({ error: "pot_size must be a non-zero int4" }, { status: 400 });
     }
 
     const { data: current, error: currentError } = await supabase

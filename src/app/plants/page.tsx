@@ -12,21 +12,28 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Leaf,
+  Plus,
   Search,
   X,
   ChevronRight,
-  ChevronDown,
   SlidersHorizontal,
   FileText,
 } from "lucide-react";
 import { Toast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm-modal";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { PlatformDetailSheet } from "@/components/platform-detail-sheet";
-import { Collapse } from "@/components/ui/collapse";
 import { PlantImage } from "@/components/plant-image";
+import { PotSizeInput } from "@/components/pot-size-input";
 import { PLANT_LOCATION_STATUSES, getPlantLocationStatusMeta } from "@/lib/plant-location-status";
-import { getBatchColorRowClass } from "@/lib/batch-color";
+import {
+  BATCH_COLORS,
+  BATCH_COLOR_META,
+  getBatchColorRowClass,
+  type BatchColor,
+} from "@/lib/batch-color";
+import { comparePotSizes, formatPotSize } from "@/lib/pot-size";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -38,51 +45,6 @@ function fmtDate(d: string) {
 }
 
 
-
-function PotSizeInput({ value, onChange, usedSizes }: { value: number; onChange: (v: number) => void; usedSizes: number[] }) {
-  const [inputVal, setInputVal] = useState(String(value));
-  const [showDrop, setShowDrop] = useState(false);
-
-  const suggestions = [...new Set([...usedSizes, 14, 16, 21])]
-    .filter((s) => String(s).startsWith(inputVal))
-    .sort((a, b) => a - b)
-    .slice(0, 6);
-
-  function commit(val: string) {
-    const n = Number(val);
-    if (n > 0) { onChange(n); setInputVal(String(n)); }
-    setShowDrop(false);
-  }
-
-  return (
-    <div className="relative">
-      <input
-        type="number"
-        min={1}
-        className="w-full h-8 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-center"
-        placeholder="🪴 Chậu"
-        value={inputVal}
-        onChange={(e) => { setInputVal(e.target.value); setShowDrop(true); }}
-        onFocus={() => setShowDrop(true)}
-        onBlur={() => setTimeout(() => { commit(inputVal); setShowDrop(false); }, 150)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(inputVal); } }}
-      />
-      {showDrop && suggestions.length > 0 && (
-        <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl  text-sm divide-y divide-gray-50 max-h-40 overflow-y-auto">
-          {suggestions.map((s) => (
-            <li
-              key={s}
-              className="px-3 py-1.5 cursor-pointer hover:bg-blue-50 text-gray-800"
-              onMouseDown={() => { onChange(s); setInputVal(String(s)); setShowDrop(false); }}
-            >
-              Chậu {s}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 function PlantsPageInner() {
   const searchParams = useSearchParams();
@@ -110,11 +72,14 @@ function PlantsPageInner() {
   const [price, setPrice] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [potSize, setPotSize] = useState<number>(14);
+  const [locationStatus, setLocationStatus] = useState("");
+  const [batchColor, setBatchColor] = useState<BatchColor>("white");
   const [plantedDate, setPlantedDate] = useState(todayStr());
   const [platformSearch, setPlatformSearch] = useState("");
   const [showPlatformDropdown, setShowPlatformDropdown] = useState(false);
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [openForm, setOpenForm] = useState(() => searchParams.get("openForm") === "1");
+  const [closingForm, setClosingForm] = useState(false);
 
   const { stack, open, push, pop } = useDetailStack();
   const [openConfirm, confirmModal] = useConfirm();
@@ -129,11 +94,56 @@ function PlantsPageInner() {
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [closingFilters, setClosingFilters] = useState(false);
+  const shouldLockPageScroll = stack.length > 0 || openForm || showFilters;
 
   useEffect(() => {
-    document.body.style.overflow = stack.length > 0 ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [stack.length]);
+    if (!shouldLockPageScroll) return;
+
+    const scrollY = window.scrollY;
+    const bodyStyle = document.body.style;
+    const htmlStyle = document.documentElement.style;
+    const previousBodyPosition = bodyStyle.position;
+    const previousBodyTop = bodyStyle.top;
+    const previousBodyLeft = bodyStyle.left;
+    const previousBodyRight = bodyStyle.right;
+    const previousBodyWidth = bodyStyle.width;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousBodyOverscroll = bodyStyle.overscrollBehavior;
+    const previousHtmlOverscroll = htmlStyle.overscrollBehavior;
+
+    bodyStyle.position = "fixed";
+    bodyStyle.top = `-${scrollY}px`;
+    bodyStyle.left = "0";
+    bodyStyle.right = "0";
+    bodyStyle.width = "100%";
+    bodyStyle.overflow = "hidden";
+    bodyStyle.overscrollBehavior = "none";
+    htmlStyle.overscrollBehavior = "none";
+
+    return () => {
+      bodyStyle.position = previousBodyPosition;
+      bodyStyle.top = previousBodyTop;
+      bodyStyle.left = previousBodyLeft;
+      bodyStyle.right = previousBodyRight;
+      bodyStyle.width = previousBodyWidth;
+      bodyStyle.overflow = previousBodyOverflow;
+      bodyStyle.overscrollBehavior = previousBodyOverscroll;
+      htmlStyle.overscrollBehavior = previousHtmlOverscroll;
+      window.scrollTo(0, scrollY);
+    };
+  }, [shouldLockPageScroll]);
+
+  const handleOpenForm = useCallback(() => {
+    setClosingForm(false);
+    setOpenForm(true);
+  }, []);
+  const handleCloseForm = useCallback(() => {
+    setClosingForm(true);
+  }, []);
+  const handleFormClosed = useCallback(() => {
+    setClosingForm(false);
+    setOpenForm(false);
+  }, []);
 
   const handleCloseFilters = useCallback(() => {
     setClosingFilters(true);
@@ -220,6 +230,8 @@ function PlantsPageInner() {
     const loc = {
       id: uuidv4(), plant_id: plant!.id, platform_id: platformId,
       quantity: qty, pot_size: potSize, planted_date: plantedDate,
+      status: locationStatus || null,
+      color: batchColor,
       ...(price ? { price: Number(price) } : {}),
     };
     const locRes = await fetch("/api/plant-locations", {
@@ -231,8 +243,9 @@ function PlantsPageInner() {
     mutate.upsertLocation(await locRes.json());
 
     setName(""); setSelectedPlantId(null); setQuantity(""); setPrice("");
-    setImageUrl(""); setPlantedDate(todayStr());
+    setImageUrl(""); setPotSize(14); setLocationStatus(""); setBatchColor("white"); setPlantedDate(todayStr());
     setMsg({ text: "Đã lưu cây và vị trí thành công!", type: "success" });
+    handleCloseForm();
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -327,17 +340,18 @@ function PlantsPageInner() {
     const nameB = plants?.find((p) => p.id === b)?.name ?? b;
     return nameA.localeCompare(nameB, "vi", { sensitivity: "base", numeric: true });
   });
-  const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort((a, b) => a - b);
+  const allPotSizes = [...new Set((locations ?? []).map((l) => l.pot_size))].sort(comparePotSizes);
   const allTags = [...new Set((plants ?? []).flatMap((p) => p.tags ?? []))].sort((a, b) => a.localeCompare(b, "vi"));
   const hasActiveFilter = searchQuery || filterStock !== "all" || filterPotSize.length > 0 || !!filterStatus || filterImage !== "all" || filterNotes !== "all" || filterTags.length > 0 || filterNoTags;
 
   return (
     <>
       <div className="max-w-lg mx-auto space-y-4">
-        {/* Form header — collapsible */}
+        {/* Add plant sheet trigger */}
         <button
-          onClick={() => setOpenForm((v) => !v)}
+          onClick={handleOpenForm}
           className="w-full flex items-center gap-3 pt-1 text-left"
+          aria-haspopup="dialog"
         >
           <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shadow-sm shrink-0">
             <Leaf className="w-5 h-5 text-white" />
@@ -346,189 +360,13 @@ function PlantsPageInner() {
             <h1 className="text-lg font-bold text-gray-900 leading-tight">Thêm cây mới</h1>
             <p className="text-xs text-gray-400">Nhập thông tin và vị trí trồng</p>
           </div>
-          <ChevronDown
-            className="w-5 h-5 text-gray-400 transition-transform duration-200"
-            style={{ transform: openForm ? "rotate(180deg)" : "rotate(0deg)" }}
-          />
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <Plus className="h-4 w-4" />
+          </div>
         </button>
 
         {/* Toast */}
         {msg && <Toast msg={msg} onClose={() => setMsg(null)} />}
-
-        {/* Add plant form — collapse animated */}
-        <Collapse open={openForm}>
-          <Card>
-            <CardContent className="pt-4">
-              <form onSubmit={handleSubmit} className="space-y-3">
-                {/* Plant name autocomplete */}
-                <div className="relative">
-                  <Input
-                    placeholder="🌿 Tên cây"
-                    value={name}
-                    autoComplete="off"
-                    onChange={(e) => { setName(e.target.value); setSelectedPlantId(null); setShowSuggestions(true); }}
-                    onFocus={() => setShowSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                  />
-                  {showSuggestions && name && (
-                    <ul className="absolute z-10 w-full bg-white border border-gray-100 rounded-xl  mt-1 max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
-                      {plants
-                        ?.filter((p) => p.name.toLowerCase().includes(name.toLowerCase()))
-                        .map((p) => (
-                          <li
-                            key={p.id}
-                            className="px-4 py-2.5 hover:bg-emerald-50 cursor-pointer flex items-center justify-between"
-                            onMouseDown={() => { setName(p.name); setSelectedPlantId(p.id); setShowSuggestions(false); }}
-                          >
-                            <span className="font-medium text-gray-800">{p.name}</span>
-                            <Badge variant="secondary">tổng: {p.total_quantity}</Badge>
-                          </li>
-                        ))}
-                    </ul>
-                  )}
-                </div>
-
-                {/* Quantity + Price + Image URL */}
-                <div className="flex gap-2">
-                  <Input
-                    className="w-1/3"
-                    placeholder="📦 Số lượng"
-                    type="number"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                  />
-                  <Input
-                    className="w-1/3"
-                    placeholder="💰 Giá tiền"
-                    type="number"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                  />
-                  <Input
-                    className="w-1/3"
-                    placeholder="🖼 URL hình (tuỳ chọn)"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                  />
-                </div>
-
-                {/* Pot size + Planted date */}
-                <div className="grid gap-2 mb-0" style={{ gridTemplateColumns: "1fr 2fr", gridTemplateRows: "auto auto" }}>
-                  <div>
-                    <PotSizeInput
-                      value={potSize}
-                      onChange={setPotSize}
-                      usedSizes={locations.map((l) => l.pot_size)}
-                    />
-                  </div>
-                  <Input
-                    type="date"
-                    value={plantedDate}
-                    onChange={(e) => setPlantedDate(e.target.value)}
-                  />
-                </div>
-
-                {/* Location selects */}
-                <div className="grid gap-2 mt-0 " style={{ gridTemplateColumns: "1fr 2fr", gridTemplateRows: "auto auto" }}>
-                  <Select
-                    value={filterGarden}
-                    onChange={(e) => handleGardenChange(e.target.value)}
-                  >
-                    <option value="">Vườn</option>
-                    {gardens?.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </Select>
-                  <div className="relative" style={{ gridRow: "1 / 3", gridColumn: "2" }}>
-                    <div
-                      className="flex items-center border border-gray-200 rounded-xl bg-white h-full px-3 gap-1 cursor-text"
-                      onClick={() => setShowPlatformDropdown(true)}
-                    >
-                      <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                      <input
-                        className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0 w-full"
-                        placeholder={platformId ? platformLabel(platformId) : "— Sàn —"}
-                        value={platformSearch}
-                        onChange={(e) => { setPlatformSearch(e.target.value); setShowPlatformDropdown(true); }}
-                        onFocus={() => setShowPlatformDropdown(true)}
-                        onBlur={() => setTimeout(() => setShowPlatformDropdown(false), 150)}
-                      />
-                      {platformId && (
-                        <button
-                          type="button"
-                          className="shrink-0 text-gray-400 hover:text-gray-600"
-                          onMouseDown={(e) => { e.preventDefault(); setParams({ platform: "" }); setPlatformSearch(""); }}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    {showPlatformDropdown && (
-                      <ul className="absolute left-0 z-20 right-0 top-full mt-1 bg-white border border-gray-300 rounded-xl  max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
-                        {(filteredPlatforms ?? [])
-                          .filter((p) => {
-                            if (!platformSearch.trim()) return true;
-                            const q = platformSearch.toLowerCase();
-                            const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
-                            const label = `tầng ${p.floor} ${p.name} ${free}`;
-                            return label.toLowerCase().includes(q);
-                          })
-                          // format label Vườn A | Tầng 1 - P9 (còn 2)
-                          // order by gardern, then floor, then name
-                          .sort((a, b) => {
-                            const gA = gardens?.find((g) => g.id === a.garden_id)?.name ?? "";
-                            const gB = gardens?.find((g) => g.id === b.garden_id)?.name ?? "";
-                            if (gA !== gB) return gA.localeCompare(gB);
-                            if (a.floor !== b.floor) return a.floor - b.floor;
-                            return a.name.localeCompare(b.name, undefined, { numeric: true });
-                          })
-                          .map((p) => {
-                            const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
-                            const label = filterFloor ? `${p.name} (còn ${free})` : `${gardens?.find((g) => g.id === p.garden_id)?.name + " | "}Tầng ${p.floor} - ${p.name} (${round2(free)})`;
-                            return (
-                              <li
-                                key={p.id}
-                                className={`px-3 py-2 cursor-pointer hover:bg-emerald-50 ${platformId === p.id ? "bg-emerald-50 font-medium text-emerald-700" : "text-gray-800"}`}
-                                onMouseDown={() => { setParams({ platform: p.id }); setPlatformSearch(""); setShowPlatformDropdown(false); }}
-                              >
-                                {label}
-                              </li>
-                            );
-                          })}
-                        {(filteredPlatforms ?? []).filter((p) => {
-                          if (!platformSearch.trim()) return true;
-                          const q = platformSearch.toLowerCase();
-                          const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
-                          return `tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
-                        }).length === 0 && (
-                            <li className="px-3 py-2 text-gray-400 text-center">Không tìm thấy</li>
-                          )}
-                      </ul>
-                    )}
-                  </div>
-                  <Select
-                    value={filterFloor}
-                    onChange={(e) => { setParams({ floor: e.target.value, platform: "" }); }}
-                  >
-                    <option value="">Tầng</option>
-                    {floorsInGarden.map((f) => (
-                      <option key={f} value={f}>Tầng {f}</option>
-                    ))}
-                  </Select>
-                </div>
-
-                <button
-                  type="submit"
-                  style={{ backgroundColor: "#059669", color: "white" }}
-                  className="w-full h-11 rounded-xl font-semibold text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.99] transition-all"
-                >
-                  <Leaf className="w-4 h-4" />
-                  Lưu
-                </button>
-              </form>
-            </CardContent>
-          </Card>
-        </Collapse>
 
         {/* List section */}
         <div className="space-y-3">
@@ -627,9 +465,9 @@ function PlantsPageInner() {
                   </div>
                 </div>
 
-                {/* Pot size filter */}
+                {/* Container size filter */}
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Chậu</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Loại & cỡ</p>
                   <div className="flex flex-wrap gap-2">
                     {allPotSizes.map((size) => {
                       const selected = filterPotSize.includes(size);
@@ -645,7 +483,7 @@ function PlantsPageInner() {
                             color: selected ? "#fff" : "#6b7280",
                           }}
                         >
-                          Chậu {size}
+                          {formatPotSize(size)}
                         </button>
                       );
                     })}
@@ -894,7 +732,7 @@ function PlantsPageInner() {
                                   {/* <MapPin className="w-3 h-3 shrink-0 text-gray-400" /> */}
                                   <div className="flex flex-col">
                                     <span>{platformLabelWithGarden(b.platform_id)}</span>
-                                    <span>{b.quantity} tấm, chậu {b.pot_size}</span>
+                                    <span>{b.quantity} tấm, {formatPotSize(b.pot_size)}</span>
                                   </div>
                                   <div className="flex flex-col items-center gap-1 ml-auto">
                                     {statusMeta && (
@@ -928,6 +766,281 @@ function PlantsPageInner() {
         {/* Confirm modal */}
         {confirmModal}
       </div>
+
+      <BottomSheet
+        open={openForm}
+        closing={closingForm}
+        title="Thêm cây"
+        description="Nhập thông tin và vị trí trồng"
+        icon={<Leaf className="h-5 w-5" />}
+        onCloseRequest={handleCloseForm}
+        onClosed={handleFormClosed}
+        closeLabel="Đóng form thêm cây"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="relative">
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Tên cây
+                  </label>
+                  <Input
+                    className="h-10"
+                    placeholder="🌿 Nhập tên cây"
+                    value={name}
+                    autoComplete="off"
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      setSelectedPlantId(null);
+                      setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  />
+                  {showSuggestions && name && (
+                    <ul className="absolute z-30 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-gray-100 bg-white text-sm shadow-lg divide-y divide-gray-50">
+                      {plants
+                        ?.filter((plant) => plant.name.toLowerCase().includes(name.toLowerCase()))
+                        .map((plant) => (
+                          <li
+                            key={plant.id}
+                            className="flex cursor-pointer items-center justify-between px-4 py-2.5 hover:bg-emerald-50"
+                            onMouseDown={() => {
+                              setName(plant.name);
+                              setSelectedPlantId(plant.id);
+                              setShowSuggestions(false);
+                            }}
+                          >
+                            <span className="font-medium text-gray-800">{plant.name}</span>
+                            <Badge variant="secondary">tổng: {plant.total_quantity}</Badge>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Số lượng
+                    </label>
+                    <Input
+                      className="h-10"
+                      placeholder="📦 Số lượng"
+                      type="number"
+                      min={1}
+                      step="any"
+                      value={quantity}
+                      onChange={(event) => setQuantity(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Giá tiền
+                    </label>
+                    <Input
+                      className="h-10"
+                      placeholder="💰 Tuỳ chọn"
+                      type="number"
+                      min={0}
+                      value={price}
+                      onChange={(event) => setPrice(event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    URL hình ảnh
+                  </label>
+                  <Input
+                    className="h-10"
+                    placeholder="🖼 Tuỳ chọn"
+                    value={imageUrl}
+                    onChange={(event) => setImageUrl(event.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,3fr)_minmax(132px,2fr)] gap-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Loại & cỡ
+                    </label>
+                    <PotSizeInput
+                      value={potSize}
+                      onChange={setPotSize}
+                      usedSizes={locations.map((location) => location.pot_size)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Ngày trồng
+                    </label>
+                    <Input
+                      className="h-9"
+                      type="date"
+                      value={plantedDate}
+                      onChange={(event) => setPlantedDate(event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,2fr)_132px] gap-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Trạng thái
+                    </label>
+                    <Select
+                      className="h-10"
+                      value={locationStatus}
+                      onChange={(event) => setLocationStatus(event.target.value)}
+                    >
+                      <option value="">Không có</option>
+                      {PLANT_LOCATION_STATUSES.map((status) => (
+                        <option key={status.value} value={status.value}>
+                          {status.icon} {status.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Màu
+                    </label>
+                    <div className="flex h-10 items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-2">
+                      {BATCH_COLORS.map((color) => {
+                        const colorMeta = BATCH_COLOR_META[color];
+                        const selected = batchColor === color;
+                        return (
+                          <button
+                            key={color}
+                            type="button"
+                            className={`h-7 w-7 rounded-full border shadow-sm transition-all ${selected ? "ring-2 ring-emerald-500 ring-offset-1" : ""}`}
+                            style={{
+                              backgroundColor: colorMeta.backgroundColor,
+                              borderColor: colorMeta.borderColor,
+                            }}
+                            aria-label={`Màu ${colorMeta.label}`}
+                            aria-pressed={selected}
+                            title={colorMeta.label}
+                            onClick={() => setBatchColor(color)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Vị trí trồng
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select
+                      className="h-10"
+                      value={filterGarden}
+                      onChange={(event) => handleGardenChange(event.target.value)}
+                    >
+                      <option value="">Vườn</option>
+                      {gardens?.map((garden) => (
+                        <option key={garden.id} value={garden.id}>{garden.name}</option>
+                      ))}
+                    </Select>
+                    <Select
+                      className="h-10"
+                      value={filterFloor}
+                      onChange={(event) => setParams({ floor: event.target.value, platform: "" })}
+                    >
+                      <option value="">Tầng</option>
+                      {floorsInGarden.map((floor) => (
+                        <option key={floor} value={floor}>Tầng {floor}</option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="relative mt-2">
+                    <div
+                      className="flex h-10 cursor-text items-center gap-2 rounded-xl border border-gray-200 bg-white px-3"
+                      onClick={() => setShowPlatformDropdown(true)}
+                    >
+                      <Search className="h-4 w-4 shrink-0 text-gray-400" />
+                      <input
+                        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+                        placeholder={platformId ? platformLabel(platformId) : "Chọn sàn"}
+                        value={platformSearch}
+                        onChange={(event) => {
+                          setPlatformSearch(event.target.value);
+                          setShowPlatformDropdown(true);
+                        }}
+                        onFocus={() => setShowPlatformDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowPlatformDropdown(false), 150)}
+                      />
+                      {platformId && (
+                        <button
+                          type="button"
+                          className="shrink-0 text-gray-400 hover:text-gray-600"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setParams({ platform: "" });
+                            setPlatformSearch("");
+                          }}
+                          aria-label="Bỏ chọn sàn"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {showPlatformDropdown && (
+                      <ul className="absolute bottom-full left-0 right-0 z-30 mb-1 max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white text-sm shadow-lg divide-y divide-gray-50">
+                        {(filteredPlatforms ?? [])
+                          .filter((platform) => {
+                            if (!platformSearch.trim()) return true;
+                            const query = platformSearch.toLowerCase();
+                            const free = platform.capacity - ((locationsByPlatform.get(platform.id) ?? []).reduce((sum, location) => sum + location.quantity, 0));
+                            return `tầng ${platform.floor} ${platform.name} ${free}`.toLowerCase().includes(query);
+                          })
+                          .sort((a, b) => {
+                            const gardenA = gardens?.find((garden) => garden.id === a.garden_id)?.name ?? "";
+                            const gardenB = gardens?.find((garden) => garden.id === b.garden_id)?.name ?? "";
+                            if (gardenA !== gardenB) return gardenA.localeCompare(gardenB);
+                            if (a.floor !== b.floor) return a.floor - b.floor;
+                            return a.name.localeCompare(b.name, undefined, { numeric: true });
+                          })
+                          .map((platform) => {
+                            const free = platform.capacity - ((locationsByPlatform.get(platform.id) ?? []).reduce((sum, location) => sum + location.quantity, 0));
+                            const gardenName = gardens?.find((garden) => garden.id === platform.garden_id)?.name;
+                            const label = `${gardenName ? `${gardenName} | ` : ""}Tầng ${platform.floor} - ${platform.name} (còn ${round2(free)})`;
+                            return (
+                              <li
+                                key={platform.id}
+                                className={`cursor-pointer px-3 py-2 hover:bg-emerald-50 ${platformId === platform.id ? "bg-emerald-50 font-medium text-emerald-700" : "text-gray-800"}`}
+                                onMouseDown={() => {
+                                  setParams({ platform: platform.id });
+                                  setPlatformSearch("");
+                                  setShowPlatformDropdown(false);
+                                }}
+                              >
+                                {label}
+                              </li>
+                            );
+                          })}
+                        {(filteredPlatforms ?? []).length === 0 && (
+                          <li className="px-3 py-2 text-center text-gray-400">Không tìm thấy</li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white transition-all hover:opacity-90 active:scale-[0.99]"
+                >
+                  <Leaf className="h-4 w-4" />
+                  Lưu cây
+                </button>
+        </form>
+      </BottomSheet>
 
       {/* Detail sheets stack */}
       {stack.map((item, index) => {

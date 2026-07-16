@@ -4,15 +4,25 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useData, type PlantNoteImage } from "@/lib/data";
 import { round2 } from "@/lib/number";
 import { currentDateString } from "@/lib/time";
-import { getBatchColorRowClass, normalizeBatchColor } from "@/lib/batch-color";
+import {
+  BATCH_COLORS,
+  BATCH_COLOR_META,
+  getBatchColorRowClass,
+  normalizeBatchColor,
+  type BatchColor,
+} from "@/lib/batch-color";
 import { getSpecialPlatformStatus } from "@/lib/special-platform-status";
 import { PLANT_LOCATION_STATUSES, getPlantLocationStatusMeta } from "@/lib/plant-location-status";
 import { getPlantMaxImages, plantMaxImagesMessage, plantRemainingImagesMessage } from "@/lib/plant-notes-config";
 import { compressPlantPhoto } from "@/lib/image-compression";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { PlantImage } from "@/components/plant-image";
+import { PotSizeInput } from "@/components/pot-size-input";
 import { Toast } from "@/components/ui/toast";
+import { formatPotSize } from "@/lib/pot-size";
 
 import {
   X, Pencil, Check, Package, MapPin, Calendar, Trash2, Search,
@@ -63,51 +73,6 @@ function fmtDate(d: string) {
   if (!d) return "";
   const [y, m, day] = d.split("-");
   return `${day}/${m}/${y}`;
-}
-
-function PotSizeInput({ value, onChange, usedSizes }: { value: number; onChange: (v: number) => void; usedSizes: number[] }) {
-  const [inputVal, setInputVal] = useState(String(value));
-  const [showDrop, setShowDrop] = useState(false);
-
-  const suggestions = [...new Set([...usedSizes, 14, 16, 21])]
-    .filter((s) => String(s).startsWith(inputVal))
-    .sort((a, b) => a - b)
-    .slice(0, 6);
-
-  function commit(val: string) {
-    const n = Number(val);
-    if (n > 0) { onChange(n); setInputVal(String(n)); }
-    setShowDrop(false);
-  }
-
-  return (
-    <div className="relative">
-      <input
-        type="number"
-        min={1}
-        className="w-full h-8 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-center"
-        placeholder="🪴 Chậu"
-        value={inputVal}
-        onChange={(e) => { setInputVal(e.target.value); setShowDrop(true); }}
-        onFocus={() => setShowDrop(true)}
-        onBlur={() => setTimeout(() => { commit(inputVal); setShowDrop(false); }, 150)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(inputVal); } }}
-      />
-      {showDrop && suggestions.length > 0 && (
-        <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl text-sm divide-y divide-gray-50 max-h-40 overflow-y-auto">
-          {suggestions.map((s) => (
-            <li
-              key={s}
-              className="px-3 py-1.5 cursor-pointer hover:bg-blue-50 text-gray-800"
-              onMouseDown={() => { onChange(s); setInputVal(String(s)); setShowDrop(false); }}
-            >
-              Chậu {s}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 function StatusBadge({ status }: { status?: string }) {
@@ -175,6 +140,9 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
 
   // Edit batch
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [closingEditBatch, setClosingEditBatch] = useState(false);
+  const [editOriginalQty, setEditOriginalQty] = useState(0);
+  const [editSheetTitle, setEditSheetTitle] = useState("");
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editPotSize, setEditPotSize] = useState<number>(14);
@@ -183,6 +151,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const [editPlatformSearch, setEditPlatformSearch] = useState("");
   const [showEditPlatformDropdown, setShowEditPlatformDropdown] = useState(false);
   const [editStatus, setEditStatus] = useState("");
+  const [editColor, setEditColor] = useState<BatchColor>("white");
 
   const { plants, locations, platforms, gardens, locationsByPlatform, locationsByPlant, locationsById, salesByPlant, notesByPlant, imagesByPlant, mutate, refresh } = useData();
 
@@ -573,8 +542,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     setSelectedDetailImage(getDetailImageView(image, imageNumber, plant?.name ?? "Plant"));
   }
 
-  function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number; status?: string }) {
+  function startEditBatch(b: { id: string; quantity: number; pot_size: number; planted_date: string; platform_id: string; price?: number; status?: string; color?: unknown }) {
+    setClosingEditBatch(false);
     setEditingBatchId(b.id);
+    setEditOriginalQty(b.quantity);
+    setEditSheetTitle(`${b.quantity} tấm · ${formatPotSize(b.pot_size)}\n${platformLabelFull(b.platform_id)}`);
     setEditQty(String(b.quantity));
     setEditPrice(b.price != null ? String(b.price) : "");
     setEditPotSize(b.pot_size);
@@ -582,6 +554,18 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
     setEditPlatformId(b.platform_id);
     setEditPlatformSearch("");
     setEditStatus(b.status || "");
+    setEditColor(normalizeBatchColor(b.color));
+  }
+
+  function requestCloseEditBatch() {
+    setShowEditPlatformDropdown(false);
+    setClosingEditBatch(true);
+  }
+
+  function finishCloseEditBatch() {
+    setClosingEditBatch(false);
+    setEditingBatchId(null);
+    setEditPlatformSearch("");
   }
 
   async function doUpdateBatch(batchId: string, oldQty: number) {
@@ -607,7 +591,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
         b.planted_date === targetPlantedDate &&
         (b.price ?? null) === targetPrice &&
         (b.status ?? null) === targetStatus &&
-        normalizeBatchColor(b.color) === normalizeBatchColor(currentBatch.color)
+        normalizeBatchColor(b.color) === editColor
       );
 
       if (existingBatch) {
@@ -635,12 +619,12 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
         } catch {
           await refresh("plants", "locations");
           setToast({ text: "Lỗi kết nối", type: "error" });
-          setEditingBatchId(null);
+          requestCloseEditBatch();
           return;
         }
 
-        setEditingBatchId(null);
         setToast({ text: `Đã chuyển ${newQty} tấm sang sàn ${platformLabelFull(editPlatformId)} thành công! (Gộp vào đợt cũ)`, type: "success" });
+        requestCloseEditBatch();
         return;
       }
     }
@@ -651,6 +635,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
         quantity: newQty, pot_size: editPotSize, planted_date: targetPlantedDate, platform_id: editPlatformId,
         ...(editPrice ? { price: Number(editPrice) } : { price: undefined }),
         status: targetStatus,
+        color: editColor,
       };
       const batch = locationsById.get(batchId)
       const locRes = await fetch(`/api/plant-locations?id=${batchId}`, {
@@ -672,7 +657,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
       await refresh("plants", "locations");
       setToast({ text: "Lỗi kết nối", type: "error" });
     }
-    setEditingBatchId(null);
+    requestCloseEditBatch();
   }
 
   async function doDeleteBatch(batchId: string, qty: number) {
@@ -723,6 +708,21 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
   const canNavigateLargeImage = !!largeImage && (
     detailImages.length > 1 || (detailImages.length === 1 && largeImageDetailIndex < 0)
   );
+  const editPlatformOptions = (platforms ?? [])
+    .filter((platform) => {
+      if (!editPlatformSearch.trim()) return true;
+      const query = editPlatformSearch.toLowerCase();
+      const free = platform.capacity - ((locationsByPlatform.get(platform.id) ?? []).reduce((sum, location) => sum + location.quantity, 0));
+      const gardenName = gardens?.find((garden) => garden.id === platform.garden_id)?.name ?? "";
+      return `${gardenName} tầng ${platform.floor} ${platform.name} ${free}`.toLowerCase().includes(query);
+    })
+    .sort((a, b) => {
+      const gardenA = gardens?.find((garden) => garden.id === a.garden_id)?.name ?? "";
+      const gardenB = gardens?.find((garden) => garden.id === b.garden_id)?.name ?? "";
+      if (gardenA !== gardenB) return gardenA.localeCompare(gardenB);
+      if (a.floor !== b.floor) return a.floor - b.floor;
+      return a.name.localeCompare(b.name, undefined, { numeric: true });
+    });
 
   return (
     <>
@@ -1012,131 +1012,12 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                         : "border border-transparent"
                         }`}
                     >
-                      {editingBatchId === b.id ? (
-                      <>
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
-                            placeholder="SL"
-                            value={editQty}
-                            onChange={(e) => setEditQty(e.target.value)}
-                          />
-                          <input
-                            type="number"
-                            className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
-                            placeholder="Giá"
-                            value={editPrice}
-                            onChange={(e) => setEditPrice(e.target.value)}
-                          />
-                          <div className="w-1/4">
-                            <PotSizeInput value={editPotSize} onChange={setEditPotSize} usedSizes={usedSizes} />
-                          </div>
-                          <input
-                            type="date"
-                            className="w-1/4 h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none"
-                            value={editDate}
-                            onChange={(e) => setEditDate(e.target.value)}
-                          />
-                        </div>
-                        {/* Status select */}
-                        <select
-                          className="w-full h-9 border border-gray-200 rounded-lg px-2 text-sm bg-white outline-none text-gray-700"
-                          value={editStatus}
-                          onChange={(e) => setEditStatus(e.target.value)}
-                        >
-                          <option value="">— Trạng thái —</option>
-                          {PLANT_LOCATION_STATUSES.map((status) => (
-                            <option key={status.value} value={status.value}>
-                              {status.icon} {status.label}
-                            </option>
-                          ))}
-                        </select>
-                        {/* Platform search */}
-                        <div className="relative">
-                          <div
-                            className="flex items-center border border-gray-200 rounded-lg bg-white px-2 h-9 gap-1 cursor-text"
-                            onClick={() => setShowEditPlatformDropdown(true)}
-                          >
-                            <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                            <input
-                              className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400 min-w-0"
-                              placeholder={editPlatformId ? platformLabelFull(editPlatformId) : "— Sàn —"}
-                              value={editPlatformSearch}
-                              onChange={(e) => { setEditPlatformSearch(e.target.value); setShowEditPlatformDropdown(true); }}
-                              onFocus={() => setShowEditPlatformDropdown(true)}
-                              onBlur={() => setTimeout(() => setShowEditPlatformDropdown(false), 150)}
-                            />
-                            {editPlatformId && (
-                              <button
-                                type="button"
-                                className="shrink-0 text-gray-400 hover:text-gray-600"
-                                onMouseDown={(e) => { e.preventDefault(); setEditPlatformId(""); setEditPlatformSearch(""); }}
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                          {showEditPlatformDropdown && (
-                            <ul className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl max-h-48 overflow-y-auto text-sm divide-y divide-gray-50">
-                              {(platforms ?? [])
-                                .filter((p) => {
-                                  if (!editPlatformSearch.trim()) return true;
-                                  const q = editPlatformSearch.toLowerCase();
-                                  const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
-                                  const g = gardens?.find((g) => g.id === p.garden_id)?.name ?? "";
-                                  return `${g} tầng ${p.floor} ${p.name} ${free}`.toLowerCase().includes(q);
-                                })
-                                .sort((a, b) => {
-                                  const gA = gardens?.find((g) => g.id === a.garden_id)?.name ?? "";
-                                  const gB = gardens?.find((g) => g.id === b.garden_id)?.name ?? "";
-                                  if (gA !== gB) return gA.localeCompare(gB);
-                                  if (a.floor !== b.floor) return a.floor - b.floor;
-                                  return a.name.localeCompare(b.name, undefined, { numeric: true });
-                                })
-                                .map((p) => {
-                                  const free = p.capacity - ((locationsByPlatform.get(p.id) ?? []).reduce((s, l) => s + l.quantity, 0));
-                                  const g = gardens?.find((g) => g.id === p.garden_id)?.name;
-                                  const label = `${g ? g + " | " : ""}Tầng ${p.floor} - ${p.name} (còn ${round2(free)})`;
-                                  return (
-                                    <li
-                                      key={p.id}
-                                      className={`px-3 py-2 cursor-pointer hover:bg-emerald-50 ${editPlatformId === p.id ? "bg-emerald-50 font-medium text-emerald-700" : "text-gray-800"}`}
-                                      onMouseDown={() => { setEditPlatformId(p.id); setEditPlatformSearch(""); setShowEditPlatformDropdown(false); }}
-                                    >
-                                      {label}
-                                    </li>
-                                  );
-                                })}
-                            </ul>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            className="flex-1 h-9 rounded-lg text-sm font-semibold text-white"
-                            style={{ backgroundColor: "#059669" }}
-                            onClick={() => openConfirm(
-                              `Cập nhật đợt này thành ${editQty} tấm, chậu ${editPotSize}?`,
-                              () => doUpdateBatch(b.id, b.quantity)
-                            )}
-                          >
-                            Lưu
-                          </button>
-                          <button
-                            className="flex-1 h-9 rounded-lg text-sm border border-gray-200 text-gray-600"
-                            onClick={() => setEditingBatchId(null)}
-                          >
-                            Huỷ
-                          </button>
-                        </div>
-                      </>
-                    ) : (
                       <div className="flex items-center justify-between">
                         <div className="text-sm space-y-0.5 min-w-0 w-full">
                           <div className="flex items-center justify-between gap-1.5 text-gray-800 font-medium">
                             <div className="flex items-center gap-1.5" >
                               <Package className="w-3.5 h-3.5" style={{ color: "#059669" }} />
-                              {b.quantity} tấm · chậu {b.pot_size}
+                              {b.quantity} tấm · {formatPotSize(b.pot_size)}
                             </div>
                             <div className="flex items-center gap-1.5">
                               <StatusBadge status={b.status} />
@@ -1182,7 +1063,6 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
                           </button>
                         </div>
                       </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1358,6 +1238,213 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
           </div>
         </div>
       </div>
+
+      <BottomSheet
+        open={editingBatchId !== null}
+        closing={closingEditBatch}
+        title={editSheetTitle}
+        description={plant.name}
+        icon={<Pencil className="h-5 w-5" />}
+        onCloseRequest={requestCloseEditBatch}
+        onClosed={finishCloseEditBatch}
+        closeLabel="Đóng form sửa đợt trồng"
+        zIndex={zIndex + 5}
+        height="78vh"
+        wrapTitle
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!editingBatchId) return;
+            openConfirm(
+              `Cập nhật đợt này thành ${editQty} tấm, ${formatPotSize(editPotSize)}?`,
+              () => doUpdateBatch(editingBatchId, editOriginalQty),
+            );
+          }}
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Số lượng
+              </label>
+              <Input
+                className="h-10"
+                type="number"
+                min={0}
+                step="any"
+                placeholder="📦 Số lượng"
+                value={editQty}
+                onChange={(event) => setEditQty(event.target.value)}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Giá tiền
+              </label>
+              <Input
+                className="h-10"
+                type="number"
+                min={0}
+                placeholder="💰 Tuỳ chọn"
+                value={editPrice}
+                onChange={(event) => setEditPrice(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[minmax(0,3fr)_minmax(132px,2fr)] gap-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Loại & cỡ
+              </label>
+              <PotSizeInput value={editPotSize} onChange={setEditPotSize} usedSizes={usedSizes} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Ngày trồng
+              </label>
+              <Input
+                className="h-9"
+                type="date"
+                value={editDate}
+                onChange={(event) => setEditDate(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[minmax(0,2fr)_132px] gap-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Trạng thái
+              </label>
+              <Select
+                className="h-10"
+                value={editStatus}
+                onChange={(event) => setEditStatus(event.target.value)}
+              >
+                <option value="">Không có</option>
+                {PLANT_LOCATION_STATUSES.map((status) => (
+                  <option key={status.value} value={status.value}>
+                    {status.icon} {status.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Màu
+              </label>
+              <div className="flex h-10 items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-2">
+                {BATCH_COLORS.map((color) => {
+                  const colorMeta = BATCH_COLOR_META[color];
+                  const selected = editColor === color;
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`h-7 w-7 rounded-full border shadow-sm transition-all ${selected ? "ring-2 ring-emerald-500 ring-offset-1" : ""}`}
+                      style={{
+                        backgroundColor: colorMeta.backgroundColor,
+                        borderColor: colorMeta.borderColor,
+                      }}
+                      aria-label={`Màu ${colorMeta.label}`}
+                      aria-pressed={selected}
+                      title={colorMeta.label}
+                      onClick={() => setEditColor(color)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Sàn
+            </label>
+            <div className="relative">
+              <div
+                className="flex h-10 cursor-text items-center gap-2 rounded-xl border border-gray-200 bg-white px-3"
+                onClick={() => setShowEditPlatformDropdown(true)}
+              >
+                <Search className="h-4 w-4 shrink-0 text-gray-400" />
+                <input
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+                  placeholder={editPlatformId ? platformLabelFull(editPlatformId) : "Chọn sàn"}
+                  value={editPlatformSearch}
+                  onChange={(event) => {
+                    setEditPlatformSearch(event.target.value);
+                    setShowEditPlatformDropdown(true);
+                  }}
+                  onFocus={() => setShowEditPlatformDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowEditPlatformDropdown(false), 150)}
+                />
+                {editPlatformId && (
+                  <button
+                    type="button"
+                    className="shrink-0 text-gray-400 hover:text-gray-600"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      setEditPlatformId("");
+                      setEditPlatformSearch("");
+                    }}
+                    aria-label="Bỏ chọn sàn"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {showEditPlatformDropdown && (
+                <ul className="absolute bottom-full left-0 right-0 z-30 mb-1 max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white text-sm shadow-lg divide-y divide-gray-50">
+                  {editPlatformOptions.map((platform) => {
+                    const free = platform.capacity - ((locationsByPlatform.get(platform.id) ?? []).reduce((sum, location) => sum + location.quantity, 0));
+                    const gardenName = gardens?.find((garden) => garden.id === platform.garden_id)?.name;
+                    const label = `${gardenName ? `${gardenName} | ` : ""}Tầng ${platform.floor} - ${platform.name} (còn ${round2(free)})`;
+                    return (
+                      <li
+                        key={platform.id}
+                        className={`cursor-pointer px-3 py-2 hover:bg-emerald-50 ${editPlatformId === platform.id ? "bg-emerald-50 font-medium text-emerald-700" : "text-gray-800"}`}
+                        onMouseDown={() => {
+                          setEditPlatformId(platform.id);
+                          setEditPlatformSearch("");
+                          setShowEditPlatformDropdown(false);
+                        }}
+                      >
+                        {label}
+                      </li>
+                    );
+                  })}
+                  {editPlatformOptions.length === 0 && (
+                    <li className="px-3 py-2 text-center text-gray-400">Không tìm thấy</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              className="h-11 flex-1 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600"
+              onClick={requestCloseEditBatch}
+            >
+              Huỷ
+            </button>
+            <button
+              type="submit"
+              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white disabled:bg-emerald-300"
+              disabled={!editQty || !editPlatformId}
+            >
+              <Check className="h-4 w-4" />
+              Lưu
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
+
       {largeImage && (
         <div
           className="fixed inset-0 flex items-center justify-center bg-black/85 px-4 py-6"
