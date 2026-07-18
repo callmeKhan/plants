@@ -75,6 +75,8 @@ function sortImports(items: AccessoryImport[]) {
 
 function sortBatches(items: AccessoryImport[]) {
   return [...items].sort((a, b) => {
+    const dateDiff = b.imported_date.localeCompare(a.imported_date);
+    if (dateDiff) return dateDiff;
     return b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id);
   });
 }
@@ -462,7 +464,7 @@ export default function ImportsPage() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    {group.batches.map((item) => {
+                    {group.batches.slice(0, 3).map((item) => {
                       const isEditing = editingId === item.id;
 
                       if (isEditing) {
@@ -587,6 +589,18 @@ export default function ImportsPage() {
                         </div>
                       );
                     })}
+                    <Link
+                      href={{
+                        pathname: "/imports/stats",
+                        query: { itemKey: group.key },
+                      }}
+                      prefetch={false}
+                      className="flex h-8 items-center justify-center rounded-lg text-base font-bold tracking-[0.2em] text-amber-500 transition-colors hover:bg-amber-50"
+                      aria-label={`Xem thống kê tất cả lần nhập của ${group.name}`}
+                      title="Xem tất cả trong thống kê"
+                    >
+                      ...
+                    </Link>
                     <div className="flex justify-end px-2 pt-1 text-[11px] font-semibold text-gray-500 text-right min-w-0">
                       <span className="min-w-0 break-words">
                         Tổng vốn: <span className="text-emerald-600 break-all">{formatMoney(group.totalValue)}</span>

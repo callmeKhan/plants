@@ -81,7 +81,7 @@ export function BottomSheet({
         </div>
 
         <div
-          className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+          className="min-h-0 flex-1 overflow-y-auto px-5 pt-4"
           style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
         >
           {children}

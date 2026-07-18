@@ -10,9 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { PlatformCapacityBadge } from "@/components/platform-capacity-badge";
 import { PlantDetailSheet } from "@/components/plant-detail-sheet";
 import { HomeTaskSheet } from "@/components/home-task-sheet";
-import { MonthlySalesChart } from "@/components/monthly-sales-chart";
 import { PlantImage } from "@/components/plant-image";
-import { Leaf, Package, Trees, ChevronRight, ClipboardList, PackagePlus } from "lucide-react";
+import { CircleDollarSign, Leaf, Package, Trees, ChevronRight, ClipboardList, PackagePlus } from "lucide-react";
 
 /** Map fill percentage → GitHub-style green color */
 function fillColor(pct: number): string {
@@ -122,14 +121,24 @@ export default function Dashboard() {
               <p className="text-xs text-gray-400">Bản đồ vườn & thống kê</p>
             </div>
           </div>
-          <Link
-            href="/imports"
-            className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-amber-600 transition-all hover:border-amber-200 hover:shadow-md active:scale-[0.97]"
-            aria-label="Nhập phụ kiện"
-            title="Nhập phụ kiện"
-          >
-            <PackagePlus className="w-5 h-5" />
-          </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/sales"
+              className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-indigo-600 transition-all hover:border-indigo-200 hover:shadow-md active:scale-[0.97]"
+              aria-label="Bán hàng"
+              title="Bán hàng"
+            >
+              <CircleDollarSign className="w-5 h-5" />
+            </Link>
+            <Link
+              href="/imports"
+              className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-amber-600 transition-all hover:border-amber-200 hover:shadow-md active:scale-[0.97]"
+              aria-label="Nhập phụ kiện"
+              title="Nhập phụ kiện"
+            >
+              <PackagePlus className="w-5 h-5" />
+            </Link>
+          </div>
         </div>
 
         {/* ── Summary Stats ── */}
@@ -201,9 +210,6 @@ export default function Dashboard() {
             </p>
           </button>
         </div>
-
-        {/* ── Monthly Sales Chart ── */}
-        <MonthlySalesChart />
 
         {/* ── Heatmap Grid ── */}
         <div className="space-y-4">

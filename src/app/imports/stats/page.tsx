@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent, type ReactNode } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   BarChart3,
@@ -15,6 +16,8 @@ import {
   SquareCheckBig,
   X,
 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   getCachedAccessoryImportStats,
   invalidateAccessoryImportStatsCache,
@@ -27,7 +30,7 @@ import {
   type AccessoryImportStatsPayload,
 } from "@/lib/accessory-import-stats";
 
-type ViewMode = "month" | "year";
+type ViewMode = "day" | "month";
 
 type ChartRow = AccessoryImportPeriodStat & {
   label: string;
@@ -70,49 +73,70 @@ function niceChartMax(value: number) {
   return niceNormalized * magnitude;
 }
 
-function emptyMonthStat(year: string, month: number): AccessoryImportPeriodStat {
-  const monthText = String(month).padStart(2, "0");
-  return {
-    period: `${year}-${monthText}`,
-    year,
-    total_quantity: 0,
-    total_value: 0,
-    batch_count: 0,
-    item_count: 0,
-    average_unit_cost: 0,
-  };
+function todayInVietnam() {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
-function monthLabel(period: string) {
-  const [, month] = period.split("-");
-  return `Tháng ${Number(month)}`;
+function chartPeriodLabel(period: string, mode: ViewMode) {
+  const [year, month, day] = period.split("-");
+  return mode === "day" ? `${day}/${month}/${year}` : `Tháng ${Number(month)}/${year}`;
 }
 
-function monthShortLabel(period: string) {
-  const [, month] = period.split("-");
-  return `T${Number(month)}`;
+function chartPeriodShortLabel(period: string, mode: ViewMode) {
+  const [year, month, day] = period.split("-");
+  return mode === "day" ? `${day}/${month}` : `T${Number(month)}/${year.slice(2)}`;
 }
 
-function buildMonthlyRows(stats: AccessoryImportStatsPayload, year: string): ChartRow[] {
-  const monthMap = new Map(stats.months.map((stat) => [stat.period, stat]));
-  return Array.from({ length: 12 }, (_, index) => {
-    const month = index + 1;
-    const period = `${year}-${String(month).padStart(2, "0")}`;
-    const stat = monthMap.get(period) ?? emptyMonthStat(year, month);
-    return {
-      ...stat,
-      label: monthLabel(period),
-      shortLabel: monthShortLabel(period),
-    };
-  });
-}
-
-function buildYearlyRows(stats: AccessoryImportStatsPayload): ChartRow[] {
-  return stats.years.map((stat) => ({
+function buildMonthlyRows(stats: AccessoryImportStatsPayload): ChartRow[] {
+  return stats.months.map((stat) => ({
     ...stat,
-    label: `Năm ${stat.period}`,
-    shortLabel: stat.period,
+    label: chartPeriodLabel(stat.period, "month"),
+    shortLabel: chartPeriodShortLabel(stat.period, "month"),
   }));
+}
+
+function buildDailyRows(stats: AccessoryImportStatsPayload): ChartRow[] {
+  const days = new Map<string, {
+    totalQuantity: number;
+    totalValue: number;
+    batchCount: number;
+    itemKeys: Set<string>;
+  }>();
+
+  for (const row of stats.rows) {
+    const day = days.get(row.imported_date) ?? {
+      totalQuantity: 0,
+      totalValue: 0,
+      batchCount: 0,
+      itemKeys: new Set<string>(),
+    };
+    day.totalQuantity += row.quantity;
+    day.totalValue += row.value;
+    day.batchCount += 1;
+    day.itemKeys.add(row.key);
+    days.set(row.imported_date, day);
+  }
+
+  return Array.from(days.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, day]) => ({
+      period,
+      year: period.slice(0, 4),
+      total_quantity: day.totalQuantity,
+      total_value: day.totalValue,
+      batch_count: day.batchCount,
+      item_count: day.itemKeys.size,
+      average_unit_cost: day.totalQuantity > 0 ? day.totalValue / day.totalQuantity : 0,
+      label: chartPeriodLabel(period, "day"),
+      shortLabel: chartPeriodShortLabel(period, "day"),
+    }));
 }
 
 function statsItemKeys(stats: AccessoryImportStatsPayload) {
@@ -427,20 +451,22 @@ function LoadingState() {
   );
 }
 
-export default function ImportStatsPage() {
+function ImportStatsPageContent() {
+  const searchParams = useSearchParams();
+  const initialItemKey = searchParams.get("itemKey") ?? "";
+  const currentDate = useMemo(() => todayInVietnam(), []);
+  const initialFromDate = searchParams.get("fromDate") ?? "";
+  const initialToDate = searchParams.get("toDate") ?? "";
+  const initialMode: ViewMode = searchParams.get("mode") === "day" ? "day" : "month";
   const [stats, setStats] = useState<AccessoryImportStatsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<ViewMode>("month");
-  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
+  const [mode, setMode] = useState<ViewMode>(initialMode);
+  const [fromDate, setFromDate] = useState(initialFromDate);
+  const [toDate, setToDate] = useState(initialToDate);
   const [selectedItemKeys, setSelectedItemKeys] = useState<string[]>([]);
   const [showItemFilter, setShowItemFilter] = useState(false);
   const [closingItemFilter, setClosingItemFilter] = useState(false);
-  const currentPeriod = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  }, []);
-  const currentYear = currentPeriod.slice(0, 4);
 
   const openItemFilter = useCallback(() => {
     setClosingItemFilter(false);
@@ -466,7 +492,11 @@ export default function ImportStatsPage() {
       .then((data) => {
         if (!active) return;
         setStats(data);
-        setSelectedItemKeys(statsItemKeys(data));
+        setSelectedItemKeys(
+          initialItemKey && data.items.some((item) => item.key === initialItemKey)
+            ? [initialItemKey]
+            : statsItemKeys(data),
+        );
         setLoading(false);
       })
       .catch(() => {
@@ -478,7 +508,7 @@ export default function ImportStatsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialItemKey]);
 
   useEffect(() => {
     if (!showItemFilter) return;
@@ -538,30 +568,41 @@ export default function ImportStatsPage() {
   }
 
   const selectedItemKeySet = useMemo(() => new Set(selectedItemKeys), [selectedItemKeys]);
+  const allItemsSelected = stats !== null && stats.items.length > 0 && selectedItemKeys.length === stats.items.length;
   const filteredStats = useMemo(() => {
     if (!stats) return null;
-    if (selectedItemKeys.length === stats.items.length) return stats;
+    if (!fromDate && !toDate && selectedItemKeys.length === stats.items.length) return stats;
 
     return buildAccessoryImportStatsPayload(
-      stats.rows.filter((row) => selectedItemKeySet.has(row.key)),
+      stats.rows.filter((row) => {
+        if (!selectedItemKeySet.has(row.key)) return false;
+        if (fromDate && row.imported_date < fromDate) return false;
+        if (toDate && row.imported_date > toDate) return false;
+        return true;
+      }),
       stats.generated_at,
     );
-  }, [selectedItemKeySet, selectedItemKeys.length, stats]);
-
-  const years = useMemo(() => filteredStats?.years.map((year) => year.period) ?? [], [filteredStats]);
-  const effectiveYear = years.includes(selectedYear)
-    ? selectedYear
-    : years[years.length - 1] ?? selectedYear;
+  }, [fromDate, selectedItemKeySet, selectedItemKeys.length, stats, toDate]);
 
   const chartRows = useMemo(() => {
     if (!filteredStats) return [];
-    return mode === "month" ? buildMonthlyRows(filteredStats, effectiveYear) : buildYearlyRows(filteredStats);
-  }, [effectiveYear, filteredStats, mode]);
+    return mode === "day" ? buildDailyRows(filteredStats) : buildMonthlyRows(filteredStats);
+  }, [filteredStats, mode]);
 
-  const visibleRows = chartRows.filter((row) => row.batch_count > 0);
-  const periodTotalValue = chartRows.reduce((sum, row) => sum + row.total_value, 0);
-  const periodTotalQuantity = chartRows.reduce((sum, row) => sum + row.total_quantity, 0);
-  const periodBatchCount = chartRows.reduce((sum, row) => sum + row.batch_count, 0);
+  const detailRows = useMemo(
+    () => [...(filteredStats?.rows ?? [])].sort((a, b) => {
+      const dateDiff = b.imported_date.localeCompare(a.imported_date);
+      if (dateDiff) return dateDiff;
+      return a.name.localeCompare(b.name, "vi", { sensitivity: "base", numeric: true });
+    }),
+    [filteredStats],
+  );
+
+  function resetFilters() {
+    setFromDate("");
+    setToDate("");
+    setSelectedItemKeys(stats?.items.map((item) => item.key) ?? []);
+  }
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
@@ -579,7 +620,7 @@ export default function ImportStatsPage() {
         </div>
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-gray-900 leading-tight">Thống kê nhập</h1>
-          <p className="text-xs text-gray-400">Theo tháng và năm</p>
+          <p className="text-xs text-gray-400">Theo ngày, tháng và mặt hàng</p>
         </div>
       </div>
 
@@ -604,6 +645,38 @@ export default function ImportStatsPage() {
         </div>
       ) : (
         <>
+          <Card>
+            <CardContent className="pt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-semibold text-gray-400">Từ ngày</span>
+                  <Input className="h-10 px-2" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[11px] font-semibold text-gray-400">Đến ngày</span>
+                  <Input className="h-10 px-2" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+                </label>
+              </div>
+
+              {stats.items.length > 1 && (
+                <ItemFilterButton
+                  items={stats.items}
+                  selectedKeys={selectedItemKeys}
+                  onOpen={openItemFilter}
+                />
+              )}
+
+              <button
+                type="button"
+                className="h-9 w-full rounded-xl bg-gray-100 text-xs font-semibold text-gray-600 transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={resetFilters}
+                disabled={!fromDate && !toDate && allItemsSelected}
+              >
+                Xoá bộ lọc
+              </button>
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)_minmax(0,0.78fr)] gap-3">
             <StatTile
               icon={<CircleDollarSign className="w-4 h-4 text-emerald-500 shrink-0" />}
@@ -622,28 +695,19 @@ export default function ImportStatsPage() {
             />
           </div>
 
-          {stats.items.length > 1 && (
-            <>
-              <ItemFilterButton
-                items={stats.items}
-                selectedKeys={selectedItemKeys}
-                onOpen={openItemFilter}
-              />
-              {showItemFilter && (
-                <ItemFilterSheet
-                  items={stats.items}
-                  selectedKeys={selectedItemKeys}
-                  closing={closingItemFilter}
-                  onChange={setSelectedItemKeys}
-                  onClose={closeItemFilter}
-                  onAnimationEnd={handleItemFilterAnimEnd}
-                />
-              )}
-            </>
-          )}
-
           <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-2">
             <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMode("day")}
+                className="h-10 rounded-xl text-sm font-semibold transition-all"
+                style={{
+                  backgroundColor: mode === "day" ? "#d97706" : "#f3f4f6",
+                  color: mode === "day" ? "#fff" : "#6b7280",
+                }}
+              >
+                Theo ngày
+              </button>
               <button
                 type="button"
                 onClick={() => setMode("month")}
@@ -655,92 +719,75 @@ export default function ImportStatsPage() {
               >
                 Theo tháng
               </button>
-              <button
-                type="button"
-                onClick={() => setMode("year")}
-                className="h-10 rounded-xl text-sm font-semibold transition-all"
-                style={{
-                  backgroundColor: mode === "year" ? "#d97706" : "#f3f4f6",
-                  color: mode === "year" ? "#fff" : "#6b7280",
-                }}
-              >
-                Theo năm
-              </button>
             </div>
           </div>
 
-          {mode === "month" && years.length > 1 && (
-            <div className="flex gap-1 overflow-x-auto pb-1">
-              {years.map((year) => {
-                const active = year === effectiveYear;
-                return (
-                  <button
-                    key={year}
-                    type="button"
-                    onClick={() => setSelectedYear(year)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all"
-                    style={{
-                      backgroundColor: active ? "#d97706" : "#f3f4f6",
-                      color: active ? "#fff" : "#6b7280",
-                    }}
-                  >
-                    {year}
-                  </button>
-                );
-              })}
+          {chartRows.length === 0 ? (
+            <div className="h-44 rounded-2xl border border-gray-100 bg-white shadow-sm flex items-center justify-center text-sm text-gray-400">
+              {selectedItemKeys.length === 0 ? "Chưa chọn mặt hàng" : "Chưa có dữ liệu phù hợp"}
             </div>
+          ) : (
+            <ImportBarChart
+              rows={chartRows}
+              focusPeriod={mode === "day" ? currentDate : currentDate.slice(0, 7)}
+            />
           )}
 
-          <ImportBarChart
-            rows={chartRows}
-            focusPeriod={mode === "month" && effectiveYear === currentYear ? currentPeriod : undefined}
-          />
-
-          <div className="grid grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)_minmax(0,0.78fr)] gap-3">
-            <StatTile
-              icon={<CircleDollarSign className="w-4 h-4 text-emerald-500 shrink-0" />}
-              label={mode === "month" ? effectiveYear : "Tất cả năm"}
-              value={formatMoney(periodTotalValue)}
-            />
-            <StatTile
-              icon={<PackagePlus className="w-4 h-4 text-amber-500 shrink-0" />}
-              label="Số lượng"
-              value={formatQty(periodTotalQuantity)}
-            />
-            <StatTile
-              icon={<CalendarDays className="w-4 h-4 text-amber-500 shrink-0" />}
-              label="Lần nhập"
-              value={formatQty(periodBatchCount)}
-            />
-          </div>
-
           <div className="space-y-2">
-            {visibleRows.length === 0 ? (
+            <h2 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+              Chi tiết các lần nhập
+              <span className="text-[11px] font-semibold text-gray-400">{detailRows.length} lần</span>
+            </h2>
+            {detailRows.length === 0 ? (
               <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-4 py-6 text-center text-sm text-gray-400">
-                {selectedItemKeys.length === 0 ? "Chưa chọn mặt hàng" : "Không có dữ liệu trong kỳ này"}
+                {selectedItemKeys.length === 0 ? "Chưa chọn mặt hàng" : "Không có lần nhập phù hợp"}
               </div>
             ) : (
-              visibleRows.map((row) => (
+              detailRows.map((row, index) => (
                 <div
-                  key={row.period}
+                  key={`${row.key}-${row.imported_date}-${index}`}
                   className="rounded-2xl bg-white border border-gray-100 shadow-sm px-4 py-3 flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{row.label}</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">{row.name}</p>
                     <p className="text-xs text-gray-400">
-                      {formatQty(row.total_quantity)} món · {formatQty(row.batch_count)} lần
+                      {chartPeriodLabel(row.imported_date, "day")} · sl: {formatQty(row.quantity)}
                     </p>
                   </div>
                   <div className="text-right min-w-0">
-                    <p className="text-sm font-bold text-emerald-600 break-all">{formatMoney(row.total_value)}</p>
-                    <p className="text-xs text-gray-400 break-all">{formatMoney(row.average_unit_cost)}/món</p>
+                    <p className="text-sm font-bold text-emerald-600 break-all">{formatMoney(row.value)}</p>
+                    <p className="text-xs text-gray-400 break-all">{formatMoney(row.unit_cost)}/món</p>
                   </div>
                 </div>
               ))
             )}
           </div>
+
+          {showItemFilter && (
+            <ItemFilterSheet
+              items={stats.items}
+              selectedKeys={selectedItemKeys}
+              closing={closingItemFilter}
+              onChange={setSelectedItemKeys}
+              onClose={closeItemFilter}
+              onAnimationEnd={handleItemFilterAnimEnd}
+            />
+          )}
         </>
       )}
     </div>
+  );
+}
+
+function ImportStatsPageRoute() {
+  const searchParams = useSearchParams();
+  return <ImportStatsPageContent key={searchParams.toString()} />;
+}
+
+export default function ImportStatsPage() {
+  return (
+    <Suspense fallback={<div className="max-w-lg mx-auto py-8 text-center text-sm text-gray-400">Đang tải thống kê...</div>}>
+      <ImportStatsPageRoute />
+    </Suspense>
   );
 }
