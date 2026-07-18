@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   CalendarDays,
   Check,
+  ChevronDown,
   CircleDollarSign,
   ListFilter,
   Package,
@@ -17,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapse } from "@/components/ui/collapse";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
@@ -31,12 +33,6 @@ import {
 type Granularity = "day" | "month";
 type ChartMetric = "quantity" | "amount";
 const PRODUCT_COLORS = ["#10b981", "#6366f1", "#f59e0b", "#0ea5e9", "#ec4899", "#8b5cf6", "#84cc16", "#f97316"];
-type CustomerProductPurchase = {
-  id: string;
-  name: string;
-  quantity: number;
-  amount: number;
-};
 type ProductSaleBatch = {
   id: string;
   soldDate: string;
@@ -316,6 +312,8 @@ function SalesStatsPageContent() {
   const [showProductFilter, setShowProductFilter] = useState(false);
   const [closingProductFilter, setClosingProductFilter] = useState(false);
   const [customerId, setCustomerId] = useState(searchParams.get("customerId") ?? "");
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(() => new Set());
+  const [expandedCustomerIds, setExpandedCustomerIds] = useState<Set<string>>(() => new Set());
   const backHref = searchParams.get("source") === "customers" ? "/customers" : "/sales";
 
   const openProductFilter = useCallback(() => {
@@ -435,32 +433,20 @@ function SalesStatsPageContent() {
     () => buildStoreSaleStats(filteredSales, granularity, monthStartDay),
     [filteredSales, granularity, monthStartDay],
   );
-  const productsByCustomer = useMemo(() => {
-    const customerMaps = new Map<string, Map<string, CustomerProductPurchase>>();
+  const salesByCustomer = useMemo(() => {
+    const customerSales = new Map<string, StoreSale[]>();
 
     for (const sale of filteredSales) {
       const customerKey = sale.customer_id ?? `deleted:${sale.customer_name_snapshot.trim().toLocaleLowerCase("vi")}`;
-      const productMap = customerMaps.get(customerKey) ?? new Map<string, CustomerProductPurchase>();
-
-      for (const item of sale.items) {
-        const purchase = productMap.get(item.product_id) ?? {
-          id: item.product_id,
-          name: item.product_name_snapshot,
-          quantity: 0,
-          amount: 0,
-        };
-        purchase.quantity += Number(item.quantity);
-        purchase.amount += Number(item.line_total);
-        productMap.set(item.product_id, purchase);
-      }
-
-      customerMaps.set(customerKey, productMap);
+      const batches = customerSales.get(customerKey) ?? [];
+      batches.push(sale);
+      customerSales.set(customerKey, batches);
     }
 
     return new Map(
-      Array.from(customerMaps.entries()).map(([customerKey, productMap]) => [
+      Array.from(customerSales.entries()).map(([customerKey, batches]) => [
         customerKey,
-        Array.from(productMap.values()).sort((a, b) => b.amount - a.amount),
+        batches.sort((a, b) => b.sold_date.localeCompare(a.sold_date) || b.created_at.localeCompare(a.created_at)),
       ]),
     );
   }, [filteredSales]);
@@ -505,6 +491,24 @@ function SalesStatsPageContent() {
     granularity === "month" && monthStartDay > 1 ? 72 : 54,
     productBarsWidth,
   );
+
+  function toggleProductDetails(productId: string) {
+    setExpandedProductIds((current) => {
+      const next = new Set(current);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  }
+
+  function toggleCustomerDetails(customerKey: string) {
+    setExpandedCustomerIds((current) => {
+      const next = new Set(current);
+      if (next.has(customerKey)) next.delete(customerKey);
+      else next.add(customerKey);
+      return next;
+    });
+  }
 
   function resetFilters() {
     setFromDate("");
@@ -747,9 +751,17 @@ function SalesStatsPageContent() {
               {stats.products.length === 0 && <p className="py-5 text-center text-sm text-gray-400">Chưa có dữ liệu</p>}
               {stats.products.map((product, index) => {
                 const batches = salesByProduct.get(product.id) ?? [];
+                const expanded = expandedProductIds.has(product.id);
+                const detailsId = `product-batches-${index}`;
                 return (
                   <div key={product.id} className="py-3">
-                    <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 text-left"
+                      onClick={() => toggleProductDetails(product.id)}
+                      aria-expanded={expanded}
+                      aria-controls={detailsId}
+                    >
                       <span className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 text-xs font-bold flex items-center justify-center shrink-0">
                         {index + 1}
                       </span>
@@ -757,26 +769,29 @@ function SalesStatsPageContent() {
                         <p className="text-sm font-semibold text-gray-800 truncate">{product.name}</p>
                         <p className="text-[11px] text-gray-400">sl: {formatQty(product.total_quantity)} · {product.sale_count} đợt bán</p>
                       </div>
-                      <span className="max-w-[40%] text-sm font-bold text-indigo-600 break-all text-right">{formatMoney(product.total_amount)}</span>
-                    </div>
+                      <span className="max-w-[36%] text-sm font-bold text-indigo-600 break-all text-right">{formatMoney(product.total_amount)}</span>
+                      <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    </button>
 
-                    <div className="mt-2 ml-10 overflow-hidden rounded-xl border border-amber-100/80 bg-amber-50/40">
-                      {batches.map((batch) => (
-                        <div
-                          key={batch.id}
-                          className="grid grid-cols-[minmax(0,1fr)_minmax(0,42%)] items-center gap-3 border-b border-amber-100/70 px-2.5 py-2 last:border-b-0"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-gray-700">{formatDate(batch.soldDate)}</p>
-                            <p className="truncate text-[10px] text-gray-400">{batch.customerName}</p>
+                    <Collapse open={expanded}>
+                      <div id={detailsId} className="mt-2 ml-10 overflow-hidden rounded-xl border border-amber-100/80 bg-amber-50/40">
+                        {batches.map((batch) => (
+                          <div
+                            key={batch.id}
+                            className="grid grid-cols-[minmax(0,1fr)_minmax(0,42%)] items-center gap-3 border-b border-amber-100/70 px-2.5 py-2 last:border-b-0"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-gray-700">{formatDate(batch.soldDate)}</p>
+                              <p className="truncate text-[10px] text-gray-400">{batch.customerName}</p>
+                            </div>
+                            <div className="min-w-0 text-right">
+                              <p className="text-xs font-semibold text-gray-700">sl: {formatQty(batch.quantity)}</p>
+                              <p className="break-all text-[10px] font-semibold text-amber-700">{formatMoney(batch.amount)}</p>
+                            </div>
                           </div>
-                          <div className="min-w-0 text-right">
-                            <p className="text-xs font-semibold text-gray-700">sl: {formatQty(batch.quantity)}</p>
-                            <p className="break-all text-[10px] font-semibold text-amber-700">{formatMoney(batch.amount)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    </Collapse>
                   </div>
                 );
               })}
@@ -793,33 +808,65 @@ function SalesStatsPageContent() {
             <div className="divide-y divide-gray-100">
               {stats.customers.length === 0 && <p className="py-5 text-center text-sm text-gray-400">Chưa có dữ liệu</p>}
               {stats.customers.map((customer, index) => {
-                const purchases = productsByCustomer.get(customer.id) ?? [];
+                const batches = salesByCustomer.get(customer.id) ?? [];
+                const expanded = expandedCustomerIds.has(customer.id);
+                const detailsId = `customer-batches-${index}`;
                 return (
                   <div key={customer.id} className="py-3">
-                    <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 text-left"
+                      onClick={() => toggleCustomerDetails(customer.id)}
+                      aria-expanded={expanded}
+                      aria-controls={detailsId}
+                    >
                       <span className="w-7 h-7 rounded-lg bg-sky-50 text-sky-700 text-xs font-bold flex items-center justify-center shrink-0">
                         {index + 1}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-gray-800 truncate">{customer.name}</p>
-                        <p className="text-[11px] text-gray-400">sl: {formatQty(customer.total_quantity)} · {customer.sale_count} hóa đơn</p>
+                        <p className="text-[11px] text-gray-400">sl: {formatQty(customer.total_quantity)} · {customer.sale_count} đợt bán</p>
                       </div>
-                      <span className="max-w-[40%] text-sm font-bold text-indigo-600 break-all text-right">{formatMoney(customer.total_amount)}</span>
-                    </div>
+                      <span className="max-w-[36%] text-sm font-bold text-indigo-600 break-all text-right">{formatMoney(customer.total_amount)}</span>
+                      <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    </button>
 
-                    <div className="mt-2 ml-10 space-y-1.5">
-                      {purchases.map((purchase) => (
-                        <div key={purchase.id} className="rounded-lg bg-sky-50/70 px-2.5 py-2 flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-gray-700 truncate">{purchase.name}</p>
-                            <p className="text-[10px] text-gray-400">Số lượng: {formatQty(purchase.quantity)}</p>
-                          </div>
-                          <span className="max-w-[42%] text-xs font-semibold text-sky-700 break-all text-right">
-                            {formatMoney(purchase.amount)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <Collapse open={expanded}>
+                      <div id={detailsId} className="mt-2 ml-10 space-y-2">
+                        {batches.map((sale) => {
+                          const batchQuantity = sale.items.reduce((sum, item) => sum + Number(item.quantity), 0);
+                          return (
+                            <div key={sale.id} className="overflow-hidden rounded-xl border border-sky-100 bg-sky-50/50">
+                              <div className="flex items-center justify-between gap-3 px-2.5 py-2">
+                                <div className="min-w-0 flex gap-2">
+                                  <p className="text-xs font-semibold text-gray-700">{formatDate(sale.sold_date)}</p>
+                                  <i className="text-[10px] text-gray-400">tổng: {formatQty(batchQuantity)}</i>
+                                </div>
+                                <span className="max-w-[45%] break-all text-right text-xs font-semibold text-sky-700">
+                                  {formatMoney(Number(sale.total_amount))}
+                                </span>
+                              </div>
+                              <div className="divide-y divide-sky-100/80 border-t border-sky-100/80 bg-white/60">
+                                {sale.items.map((item) => (
+                                  <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1.5">
+                                    <div className="min-w-0 ">
+                                      <p className="truncate text-[11px] font-semibold text-gray-600">{item.product_name_snapshot}</p>
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <p className="text-[10px] text-gray-400 text-right"> sl: {formatQty(Number(item.quantity))}</p>
+
+                                      <span className="max-w-28 break-all text-right text-[10px] font-semibold text-sky-700">
+                                      {formatMoney(Number(item.line_total))}
+                                    </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Collapse>
                   </div>
                 );
               })}
