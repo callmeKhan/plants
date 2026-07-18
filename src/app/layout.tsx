@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import SyncProvider from "@/components/SyncProvider";
 import { LoadingProvider } from "@/components/LoadingProvider";
+import { DatePickerProvider } from "@/components/date-picker-provider";
 import { DataProvider } from "@/lib/data";
 import { SellCartBar } from "@/components/sell-cart-bar";
 
@@ -49,15 +51,19 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-white text-gray-900">
-        <LoadingProvider>
-          <SyncProvider>
-            <DataProvider>
-              <main className="flex-1 pb-20 px-4 pt-4">{children}</main>
-              <SellCartBar />
-              <BottomNav />
-            </DataProvider>
-          </SyncProvider>
-        </LoadingProvider>
+        <AppRouterCacheProvider options={{ enableCssLayer: true }}>
+          <DatePickerProvider>
+            <LoadingProvider>
+              <SyncProvider>
+                <DataProvider>
+                  <main className="flex-1 pb-20 px-4 pt-4">{children}</main>
+                  <SellCartBar />
+                  <BottomNav />
+                </DataProvider>
+              </SyncProvider>
+            </LoadingProvider>
+          </DatePickerProvider>
+        </AppRouterCacheProvider>
       </body>
     </html>
   );

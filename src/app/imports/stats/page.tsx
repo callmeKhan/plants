@@ -23,6 +23,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { AppDatePicker } from "@/components/ui/app-date-picker";
+import { AppDateRangePicker } from "@/components/ui/app-date-range-picker";
 import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
 import {
@@ -748,7 +750,7 @@ function ImportStatsPageContent() {
     <>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
-      <div className="max-w-lg mx-auto space-y-4">
+      <div className="max-w-lg mx-auto space-y-4 pb-14">
       <div className="flex items-center gap-3 pt-1">
         <Link
           href="/imports"
@@ -790,15 +792,17 @@ function ImportStatsPageContent() {
         <>
           <Card>
             <CardContent className="pt-4 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1">
-                  <span className="text-[11px] font-semibold text-gray-400">Từ ngày</span>
-                  <Input className="h-10 px-2" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] font-semibold text-gray-400">Đến ngày</span>
-                  <Input className="h-10 px-2" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-                </label>
+              <div className="space-y-1">
+                <span className="text-[11px] font-semibold text-gray-400">Khoảng ngày</span>
+                <AppDateRangePicker
+                  ariaLabel="Lọc nhập phụ kiện theo khoảng ngày"
+                  startValue={fromDate}
+                  endValue={toDate}
+                  onRangeChange={(startValue, endValue) => {
+                    setFromDate(startValue);
+                    setToDate(endValue);
+                  }}
+                />
               </div>
 
               {stats.items.length > 1 && (
@@ -1012,15 +1016,15 @@ function ImportStatsPageContent() {
             </label>
           </div>
 
-          <label className="space-y-1.5">
+          <div className="space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ngày nhập</span>
-            <Input
-              className="h-11 px-2"
-              type="date"
+            <AppDatePicker
+              ariaLabel="Ngày nhập phụ kiện"
+              height={44}
               value={editImportForm.importedDate}
-              onChange={(event) => setEditImportForm((current) => ({ ...current, importedDate: event.target.value }))}
+              onValueChange={(value) => setEditImportForm((current) => ({ ...current, importedDate: value }))}
             />
-          </label>
+          </div>
 
           <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Tổng vốn: <span className="font-bold">{formatMoney((Number(editImportForm.quantity) || 0) * (Number(editImportForm.unitCost) || 0))}</span>

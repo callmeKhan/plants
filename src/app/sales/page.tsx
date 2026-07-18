@@ -29,6 +29,7 @@ import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Collapse } from "@/components/ui/collapse";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { AppDatePicker } from "@/components/ui/app-date-picker";
 import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
 import {
@@ -1237,14 +1238,13 @@ export default function SalesPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_155px] gap-2">
             <div className="relative">
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Khách hàng
               </label>
-              <UserRound className="absolute left-3 top-[2.6rem] -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                className="h-11 pl-9 pr-9"
+                className="h-11 pr-9"
                 value={saleForm.customerName}
                 onChange={(event) => {
                   setCustomerName(event.target.value);
@@ -1293,17 +1293,17 @@ export default function SalesPage() {
                 </ul>
               )}
             </div>
-            <label>
+            <div>
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Ngày bán
               </span>
-              <Input
-                className="h-11 px-2"
-                type="date"
+              <AppDatePicker
+                ariaLabel="Ngày bán"
+                height={44}
                 value={saleForm.soldDate}
-                onChange={(event) => setSaleForm((current) => ({ ...current, soldDate: event.target.value }))}
+                onValueChange={(value) => setSaleForm((current) => ({ ...current, soldDate: value }))}
               />
-            </label>
+            </div>
           </div>
           <p
             className={`-mt-2 min-h-4 text-[11px] text-indigo-600 ${saleForm.customerName.trim() && !saleForm.customerId ? "visible" : "invisible"}`}

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { AppDatePicker } from "@/components/ui/app-date-picker";
 import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -288,7 +289,7 @@ export default function ImportsPage() {
 
                 <div className="flex gap-2">
                   <FormattedNumberInput
-                    className="w-1/3"
+                    className="w-[65px]"
                     value={form.quantity}
                     onValueChange={(value) => updateForm("quantity", value)}
                     placeholder="Số lượng"
@@ -299,11 +300,12 @@ export default function ImportsPage() {
                     onValueChange={(value) => updateForm("unitCost", value)}
                     placeholder="Giá tiền"
                   />
-                  <Input
-                    className="w-1/3 px-2"
-                    type="date"
+                  <AppDatePicker
+                    ariaLabel="Ngày nhập phụ kiện"
+                    className="w-[145px]"
+                    height={32}
                     value={form.importedDate}
-                    onChange={(e) => updateForm("importedDate", e.target.value)}
+                    onValueChange={(value) => updateForm("importedDate", value)}
                   />
                 </div>
 

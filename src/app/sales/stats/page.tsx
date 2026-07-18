@@ -25,6 +25,8 @@ import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Collapse } from "@/components/ui/collapse";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { AppDatePicker } from "@/components/ui/app-date-picker";
+import { AppDateRangePicker } from "@/components/ui/app-date-range-picker";
 import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
 import { Select } from "@/components/ui/select";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
@@ -720,7 +722,7 @@ function SalesStatsPageContent() {
     <>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
-      <div className="max-w-lg mx-auto space-y-4">
+      <div className="max-w-lg mx-auto space-y-4 pb-14">
         <div className="flex items-center gap-3 pt-1">
           <Link
             href={backHref}
@@ -752,15 +754,17 @@ function SalesStatsPageContent() {
 
         <Card>
           <CardContent className="pt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="space-y-1">
-                <span className="text-[11px] font-semibold text-gray-400">Từ ngày</span>
-                <Input className="h-10 px-2" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-              </label>
-              <label className="space-y-1">
-                <span className="text-[11px] font-semibold text-gray-400">Đến ngày</span>
-                <Input className="h-10 px-2" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-              </label>
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold text-gray-400">Khoảng ngày</span>
+              <AppDateRangePicker
+                ariaLabel="Lọc bán hàng theo khoảng ngày"
+                startValue={fromDate}
+                endValue={toDate}
+                onRangeChange={(startValue, endValue) => {
+                  setFromDate(startValue);
+                  setToDate(endValue);
+                }}
+              />
             </div>
 
             <ProductFilterButton
@@ -1153,15 +1157,15 @@ function SalesStatsPageContent() {
                 {data.customers.map((customer) => <option key={customer.id} value={customer.name} />)}
               </datalist>
             </label>
-            <label className="space-y-1.5">
+            <div className="space-y-1.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ngày bán</span>
-              <Input
-                className="h-11 px-2"
-                type="date"
+              <AppDatePicker
+                ariaLabel="Ngày bán"
+                height={44}
                 value={editSaleForm.soldDate}
-                onChange={(event) => setEditSaleForm((current) => ({ ...current, soldDate: event.target.value }))}
+                onValueChange={(value) => setEditSaleForm((current) => ({ ...current, soldDate: value }))}
               />
-            </label>
+            </div>
           </div>
 
           <div className="space-y-2">
