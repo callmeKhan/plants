@@ -6,6 +6,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useData } from "@/lib/data";
 import { v4 as uuidv4 } from "uuid";
 import { Input } from "@/components/ui/input";
+import { AppDatePicker } from "@/components/ui/app-date-picker";
 import { round2 } from "@/lib/number";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
@@ -859,7 +860,7 @@ function PlantsPageInner() {
                   />
                 </div>
 
-                <div className="grid grid-cols-[minmax(0,3fr)_minmax(132px,2fr)] gap-2">
+                <div className="grid grid-cols-[minmax(0,3fr)_minmax(160px,2fr)] gap-2">
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                       Loại & cỡ
@@ -874,11 +875,11 @@ function PlantsPageInner() {
                     <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                       Ngày trồng
                     </label>
-                    <Input
-                      className="h-9"
-                      type="date"
+                    <AppDatePicker
+                      ariaLabel="Ngày trồng"
+                      height={36}
                       value={plantedDate}
-                      onChange={(event) => setPlantedDate(event.target.value)}
+                      onValueChange={setPlantedDate}
                     />
                   </div>
                 </div>

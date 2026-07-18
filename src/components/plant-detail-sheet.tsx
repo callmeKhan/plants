@@ -17,6 +17,7 @@ import { getPlantMaxImages, plantMaxImagesMessage, plantRemainingImagesMessage }
 import { compressPlantPhoto } from "@/lib/image-compression";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AppDatePicker } from "@/components/ui/app-date-picker";
 import { Select } from "@/components/ui/select";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { PlantImage } from "@/components/plant-image";
@@ -1293,7 +1294,7 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
             </div>
           </div>
 
-          <div className="grid grid-cols-[minmax(0,3fr)_minmax(132px,2fr)] gap-2">
+          <div className="grid grid-cols-[minmax(0,3fr)_minmax(160px,2fr)] gap-2">
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Loại & cỡ
@@ -1304,11 +1305,11 @@ export function PlantDetailSheet({ plantId, onClose, highlightBatchId, onShowPla
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Ngày trồng
               </label>
-              <Input
-                className="h-9"
-                type="date"
+              <AppDatePicker
+                ariaLabel="Ngày trồng"
+                height={36}
                 value={editDate}
-                onChange={(event) => setEditDate(event.target.value)}
+                onValueChange={setEditDate}
               />
             </div>
           </div>
