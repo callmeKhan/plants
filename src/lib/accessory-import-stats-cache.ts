@@ -11,7 +11,7 @@ export type {
 let cachedStats: AccessoryImportStatsPayloadType | null = null;
 let pendingStats: Promise<AccessoryImportStatsPayloadType> | null = null;
 let cacheGeneration = 0;
-const storageKey = "plants:accessory-import-stats:v2";
+const storageKey = "plants:accessory-import-stats:v3";
 
 function readStoredStats() {
   if (typeof window === "undefined") return null;

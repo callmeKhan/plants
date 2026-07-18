@@ -31,6 +31,7 @@ export type AccessoryImportItemStat = {
 };
 
 export type AccessoryImportStatsRow = {
+  id: string | null;
   key: string;
   name: string;
   unit_cost: number;
@@ -40,6 +41,7 @@ export type AccessoryImportStatsRow = {
 };
 
 export type AccessoryImportStatsInputRow = {
+  id?: string | null;
   name: string | null;
   unit_cost: number | string | null;
   imported_date: string | null;
@@ -141,6 +143,7 @@ function emptyTotals(): AccessoryImportTotals {
 }
 
 function normalizeStatsRow(row: AccessoryImportStatsInputRow): AccessoryImportStatsRow | null {
+  const id = row.id?.trim() || null;
   const name = row.name?.trim();
   const importedDate = row.imported_date;
   const quantity = Number(row.quantity);
@@ -151,6 +154,7 @@ function normalizeStatsRow(row: AccessoryImportStatsInputRow): AccessoryImportSt
   }
 
   return {
+    id,
     key: accessoryImportItemKey(name),
     name,
     unit_cost: round2(unitCost),

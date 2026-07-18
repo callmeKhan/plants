@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -10,14 +10,21 @@ import {
   Check,
   CircleDollarSign,
   ListFilter,
+  MoreVertical,
   PackagePlus,
+  Pencil,
   RefreshCw,
   Search,
   SquareCheckBig,
+  Trash2,
   X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
+import { useConfirm } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
+import { Toast, type ToastMsg } from "@/components/ui/toast";
 import {
   getCachedAccessoryImportStats,
   invalidateAccessoryImportStatsCache,
@@ -28,9 +35,16 @@ import {
   type AccessoryImportItemStat,
   type AccessoryImportPeriodStat,
   type AccessoryImportStatsPayload,
+  type AccessoryImportStatsRow,
 } from "@/lib/accessory-import-stats";
 
 type ViewMode = "day" | "month";
+type ImportEditForm = {
+  name: string;
+  quantity: string;
+  unitCost: string;
+  importedDate: string;
+};
 
 type ChartRow = AccessoryImportPeriodStat & {
   label: string;
@@ -467,6 +481,13 @@ function ImportStatsPageContent() {
   const [selectedItemKeys, setSelectedItemKeys] = useState<string[]>([]);
   const [showItemFilter, setShowItemFilter] = useState(false);
   const [closingItemFilter, setClosingItemFilter] = useState(false);
+  const [openImportActionId, setOpenImportActionId] = useState<string | null>(null);
+  const [editingImport, setEditingImport] = useState<AccessoryImportStatsRow | null>(null);
+  const [editImportForm, setEditImportForm] = useState<ImportEditForm>({ name: "", quantity: "", unitCost: "", importedDate: "" });
+  const [closingEditImport, setClosingEditImport] = useState(false);
+  const [savingEditImport, setSavingEditImport] = useState(false);
+  const [toast, setToast] = useState<ToastMsg | null>(null);
+  const [openConfirm, confirmModal] = useConfirm();
 
   const openItemFilter = useCallback(() => {
     setClosingItemFilter(false);
@@ -547,7 +568,44 @@ function ImportStatsPageContent() {
     };
   }, [showItemFilter]);
 
-  async function retry() {
+  useEffect(() => {
+    if (!editingImport) return;
+
+    const scrollY = window.scrollY;
+    const bodyStyle = document.body.style;
+    const htmlStyle = document.documentElement.style;
+    const previousBodyPosition = bodyStyle.position;
+    const previousBodyTop = bodyStyle.top;
+    const previousBodyLeft = bodyStyle.left;
+    const previousBodyRight = bodyStyle.right;
+    const previousBodyWidth = bodyStyle.width;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousBodyOverscroll = bodyStyle.overscrollBehavior;
+    const previousHtmlOverscroll = htmlStyle.overscrollBehavior;
+
+    bodyStyle.position = "fixed";
+    bodyStyle.top = `-${scrollY}px`;
+    bodyStyle.left = "0";
+    bodyStyle.right = "0";
+    bodyStyle.width = "100%";
+    bodyStyle.overflow = "hidden";
+    bodyStyle.overscrollBehavior = "none";
+    htmlStyle.overscrollBehavior = "none";
+
+    return () => {
+      bodyStyle.position = previousBodyPosition;
+      bodyStyle.top = previousBodyTop;
+      bodyStyle.left = previousBodyLeft;
+      bodyStyle.right = previousBodyRight;
+      bodyStyle.width = previousBodyWidth;
+      bodyStyle.overflow = previousBodyOverflow;
+      bodyStyle.overscrollBehavior = previousBodyOverscroll;
+      htmlStyle.overscrollBehavior = previousHtmlOverscroll;
+      window.scrollTo(0, scrollY);
+    };
+  }, [editingImport]);
+
+  async function retry(selectedKeyChange?: { from: string; to: string }) {
     invalidateAccessoryImportStatsCache();
     setLoading(true);
     setError(null);
@@ -557,11 +615,16 @@ function ImportStatsPageContent() {
       const nextItemKeys = statsItemKeys(data);
       const nextItemKeySet = new Set(nextItemKeys);
       setSelectedItemKeys((current) => {
-        const validCurrent = current.filter((key) => nextItemKeySet.has(key));
+        const remappedCurrent = selectedKeyChange
+          ? current.map((key) => key === selectedKeyChange.from ? selectedKeyChange.to : key)
+          : current;
+        const validCurrent = Array.from(new Set(remappedCurrent.filter((key) => nextItemKeySet.has(key))));
         return validCurrent.length > 0 ? validCurrent : nextItemKeys;
       });
+      return true;
     } catch {
       setError("Lỗi tải thống kê nhập kho");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -604,8 +667,88 @@ function ImportStatsPageContent() {
     setSelectedItemKeys(stats?.items.map((item) => item.key) ?? []);
   }
 
+  function startEditImport(row: AccessoryImportStatsRow) {
+    if (!row.id) return;
+
+    setOpenImportActionId(null);
+    setClosingEditImport(false);
+    setEditingImport(row);
+    setEditImportForm({
+      name: row.name,
+      quantity: String(row.quantity),
+      unitCost: String(row.unit_cost),
+      importedDate: row.imported_date,
+    });
+  }
+
+  function requestCloseEditImport() {
+    if (!savingEditImport) setClosingEditImport(true);
+  }
+
+  function finishCloseEditImport() {
+    setClosingEditImport(false);
+    setEditingImport(null);
+  }
+
+  async function saveImportEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingImport?.id || savingEditImport) return;
+
+    const name = editImportForm.name.trim();
+    const quantity = Number(editImportForm.quantity);
+    const unitCost = Number(editImportForm.unitCost);
+    if (!name || !editImportForm.importedDate || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
+      setToast({ text: "Nhập đầy đủ tên, ngày, số lượng và giá hợp lệ", type: "error" });
+      return;
+    }
+
+    setSavingEditImport(true);
+    try {
+      const response = await fetch(`/api/accessory-imports?id=${encodeURIComponent(editingImport.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, quantity, unit_cost: unitCost, imported_date: editImportForm.importedDate }),
+      });
+      if (!response.ok) throw new Error("Failed to update accessory import");
+
+      const refreshed = await retry({ from: editingImport.key, to: name.toLowerCase() });
+      if (refreshed) {
+        setClosingEditImport(true);
+        setToast({ text: "Đã cập nhật lần nhập", type: "success" });
+      }
+    } catch {
+      setToast({ text: "Lỗi cập nhật nhập kho", type: "error" });
+    } finally {
+      setSavingEditImport(false);
+    }
+  }
+
+  function requestDeleteImport(row: AccessoryImportStatsRow) {
+    const importId = row.id;
+    if (!importId) return;
+
+    setOpenImportActionId(null);
+    openConfirm(
+      `Xoá lần nhập “${row.name}” ngày ${chartPeriodLabel(row.imported_date, "day")}?`,
+      async () => {
+        try {
+          const response = await fetch(`/api/accessory-imports?id=${encodeURIComponent(importId)}`, { method: "DELETE" });
+          if (!response.ok) throw new Error("Failed to delete accessory import");
+
+          const refreshed = await retry();
+          if (refreshed) setToast({ text: "Đã xoá lần nhập", type: "success" });
+        } catch {
+          setToast({ text: "Lỗi xoá nhập kho", type: "error" });
+        }
+      },
+    );
+  }
+
   return (
-    <div className="max-w-lg mx-auto space-y-4">
+    <>
+      {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+
+      <div className="max-w-lg mx-auto space-y-4">
       <div className="flex items-center gap-3 pt-1">
         <Link
           href="/imports"
@@ -631,7 +774,7 @@ function ImportStatsPageContent() {
           <p className="text-sm text-red-500 font-semibold mb-3">{error}</p>
           <button
             type="button"
-            onClick={retry}
+            onClick={() => { void retry(); }}
             className="h-10 px-4 rounded-xl bg-red-500 text-white text-sm font-semibold inline-flex items-center justify-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
@@ -745,7 +888,7 @@ function ImportStatsPageContent() {
             ) : (
               detailRows.map((row, index) => (
                 <div
-                  key={`${row.key}-${row.imported_date}-${index}`}
+                  key={row.id ?? `${row.key}-${row.imported_date}-${index}`}
                   className="rounded-2xl bg-white border border-gray-100 shadow-sm px-4 py-3 flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0">
@@ -754,9 +897,59 @@ function ImportStatsPageContent() {
                       {chartPeriodLabel(row.imported_date, "day")} · sl: {formatQty(row.quantity)}
                     </p>
                   </div>
-                  <div className="text-right min-w-0">
-                    <p className="text-sm font-bold text-emerald-600 break-all">{formatMoney(row.value)}</p>
-                    <p className="text-xs text-gray-400 break-all">{formatMoney(row.unit_cost)}/món</p>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <div className="text-right min-w-0">
+                      <p className="text-sm font-bold text-emerald-600 break-all">{formatMoney(row.value)}</p>
+                      <p className="text-xs text-gray-400 break-all">{formatMoney(row.unit_cost)}/món</p>
+                    </div>
+                    {row.id && (
+                      <div
+                        className="relative"
+                        onBlur={(event) => {
+                          const nextFocus = event.relatedTarget;
+                          if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus)) {
+                            setOpenImportActionId(null);
+                          }
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100"
+                          onClick={() => setOpenImportActionId((current) => current === row.id ? null : row.id)}
+                          aria-label={`Mở thao tác cho lần nhập ${row.name} ngày ${chartPeriodLabel(row.imported_date, "day")}`}
+                          aria-haspopup="menu"
+                          aria-expanded={openImportActionId === row.id}
+                          title="Thao tác"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {openImportActionId === row.id && (
+                          <div
+                            role="menu"
+                            className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-gray-600 hover:bg-gray-50"
+                              onClick={() => startEditImport(row)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Sửa
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-red-500 hover:bg-red-50"
+                              onClick={() => requestDeleteImport(row)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Xoá
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -775,7 +968,78 @@ function ImportStatsPageContent() {
           )}
         </>
       )}
-    </div>
+      </div>
+
+      <BottomSheet
+        open={Boolean(editingImport)}
+        closing={closingEditImport}
+        title="Sửa lần nhập"
+        description={editingImport ? `${editingImport.name} · ${chartPeriodLabel(editingImport.imported_date, "day")}` : undefined}
+        icon={<Pencil className="h-5 w-5" />}
+        onCloseRequest={requestCloseEditImport}
+        onClosed={finishCloseEditImport}
+        closeLabel="Đóng form sửa lần nhập"
+        height="70vh"
+        zIndex={50}
+      >
+        <form className="flex min-h-full flex-col gap-4" onSubmit={saveImportEdit}>
+          <label className="space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Mặt hàng</span>
+            <Input
+              className="h-11"
+              value={editImportForm.name}
+              onChange={(event) => setEditImportForm((current) => ({ ...current, name: event.target.value }))}
+              autoFocus
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Số lượng</span>
+              <FormattedNumberInput
+                className="h-11"
+                value={editImportForm.quantity}
+                onValueChange={(value) => setEditImportForm((current) => ({ ...current, quantity: value }))}
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Giá nhập</span>
+              <FormattedNumberInput
+                className="h-11"
+                value={editImportForm.unitCost}
+                onValueChange={(value) => setEditImportForm((current) => ({ ...current, unitCost: value }))}
+              />
+            </label>
+          </div>
+
+          <label className="space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ngày nhập</span>
+            <Input
+              className="h-11 px-2"
+              type="date"
+              value={editImportForm.importedDate}
+              onChange={(event) => setEditImportForm((current) => ({ ...current, importedDate: event.target.value }))}
+            />
+          </label>
+
+          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Tổng vốn: <span className="font-bold">{formatMoney((Number(editImportForm.quantity) || 0) * (Number(editImportForm.unitCost) || 0))}</span>
+          </div>
+
+          <div className="sticky bottom-0 -mx-5 -mb-4 mt-auto border-t border-gray-100 bg-white px-5 pb-3 pt-3">
+            <button
+              type="submit"
+              disabled={savingEditImport}
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-amber-600 text-sm font-semibold text-white disabled:bg-amber-300"
+            >
+              {savingEditImport ? "Đang lưu..." : "Lưu thay đổi"}
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
+
+      {confirmModal}
+    </>
   );
 }
 

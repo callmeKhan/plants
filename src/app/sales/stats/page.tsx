@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState, type AnimationEvent, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type AnimationEvent, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -10,16 +10,22 @@ import {
   ChevronDown,
   CircleDollarSign,
   ListFilter,
+  MoreVertical,
   Package,
+  Pencil,
   RefreshCw,
   Search,
   SquareCheckBig,
+  Trash2,
   UsersRound,
   X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Collapse } from "@/components/ui/collapse";
+import { useConfirm } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
 import { Select } from "@/components/ui/select";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
 import {
@@ -40,6 +46,18 @@ type ProductSaleBatch = {
   customerName: string;
   quantity: number;
   amount: number;
+};
+type SaleEditLine = {
+  id?: string;
+  productId: string;
+  productName: string;
+  unitPrice: number;
+  quantity: string;
+};
+type SaleEditForm = {
+  customerName: string;
+  soldDate: string;
+  lines: SaleEditLine[];
 };
 
 function formatMoney(value: number) {
@@ -314,6 +332,12 @@ function SalesStatsPageContent() {
   const [customerId, setCustomerId] = useState(searchParams.get("customerId") ?? "");
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(() => new Set());
   const [expandedCustomerIds, setExpandedCustomerIds] = useState<Set<string>>(() => new Set());
+  const [openSaleActionId, setOpenSaleActionId] = useState<string | null>(null);
+  const [editingSale, setEditingSale] = useState<StoreSale | null>(null);
+  const [editSaleForm, setEditSaleForm] = useState<SaleEditForm>({ customerName: "", soldDate: "", lines: [] });
+  const [closingEditSale, setClosingEditSale] = useState(false);
+  const [savingEditSale, setSavingEditSale] = useState(false);
+  const [openConfirm, confirmModal] = useConfirm();
   const backHref = searchParams.get("source") === "customers" ? "/customers" : "/sales";
 
   const openProductFilter = useCallback(() => {
@@ -338,8 +362,10 @@ function SalesStatsPageContent() {
       const nextProductIds = new Set(nextData.products.map((product) => product.id));
       setData(nextData);
       setSelectedProductIds((current) => current.filter((id) => nextProductIds.has(id)));
+      return true;
     } catch (error) {
       setToast({ text: error instanceof Error ? error.message : "Lỗi tải thống kê", type: "error" });
+      return false;
     } finally {
       setLoading(false);
     }
@@ -405,12 +431,64 @@ function SalesStatsPageContent() {
     };
   }, [showProductFilter]);
 
+  useEffect(() => {
+    if (!editingSale) return;
+
+    const scrollY = window.scrollY;
+    const bodyStyle = document.body.style;
+    const htmlStyle = document.documentElement.style;
+    const previousBodyPosition = bodyStyle.position;
+    const previousBodyTop = bodyStyle.top;
+    const previousBodyLeft = bodyStyle.left;
+    const previousBodyRight = bodyStyle.right;
+    const previousBodyWidth = bodyStyle.width;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousBodyOverscroll = bodyStyle.overscrollBehavior;
+    const previousHtmlOverscroll = htmlStyle.overscrollBehavior;
+
+    bodyStyle.position = "fixed";
+    bodyStyle.top = `-${scrollY}px`;
+    bodyStyle.left = "0";
+    bodyStyle.right = "0";
+    bodyStyle.width = "100%";
+    bodyStyle.overflow = "hidden";
+    bodyStyle.overscrollBehavior = "none";
+    htmlStyle.overscrollBehavior = "none";
+
+    return () => {
+      bodyStyle.position = previousBodyPosition;
+      bodyStyle.top = previousBodyTop;
+      bodyStyle.left = previousBodyLeft;
+      bodyStyle.right = previousBodyRight;
+      bodyStyle.width = previousBodyWidth;
+      bodyStyle.overflow = previousBodyOverflow;
+      bodyStyle.overscrollBehavior = previousBodyOverscroll;
+      htmlStyle.overscrollBehavior = previousHtmlOverscroll;
+      window.scrollTo(0, scrollY);
+    };
+  }, [editingSale]);
+
   const selectedProductIdSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds]);
   const selectedProducts = useMemo(
     () => data.products.filter((product) => selectedProductIdSet.has(product.id)),
     [data.products, selectedProductIdSet],
   );
   const allProductsSelected = data.products.length > 0 && selectedProductIds.length === data.products.length;
+  const editSaleProductIds = useMemo(
+    () => new Set(editSaleForm.lines.map((line) => line.productId)),
+    [editSaleForm.lines],
+  );
+  const availableEditProducts = useMemo(
+    () => data.products.filter((product) => !editSaleProductIds.has(product.id)),
+    [data.products, editSaleProductIds],
+  );
+  const editSaleTotal = useMemo(
+    () => editSaleForm.lines.reduce((sum, line) => {
+      const quantity = Number(line.quantity);
+      return sum + (Number.isFinite(quantity) ? quantity * line.unitPrice : 0);
+    }, 0),
+    [editSaleForm.lines],
+  );
 
   const filteredSales = useMemo<StoreSale[]>(() => {
     return data.sales.flatMap((sale) => {
@@ -507,6 +585,127 @@ function SalesStatsPageContent() {
       if (next.has(customerKey)) next.delete(customerKey);
       else next.add(customerKey);
       return next;
+    });
+  }
+
+  function startEditSale(sale: StoreSale) {
+    const fullSale = data.sales.find((item) => item.id === sale.id) ?? sale;
+    setOpenSaleActionId(null);
+    setClosingEditSale(false);
+    setEditingSale(fullSale);
+    setEditSaleForm({
+      customerName: fullSale.customer_name_snapshot,
+      soldDate: fullSale.sold_date,
+      lines: fullSale.items.map((item) => ({
+        id: item.id,
+        productId: item.product_id,
+        productName: item.product_name_snapshot,
+        unitPrice: Number(item.unit_price_snapshot),
+        quantity: String(item.quantity),
+      })),
+    });
+  }
+
+  function requestCloseEditSale() {
+    if (!savingEditSale) setClosingEditSale(true);
+  }
+
+  function finishCloseEditSale() {
+    setClosingEditSale(false);
+    setEditingSale(null);
+    setEditSaleForm({ customerName: "", soldDate: "", lines: [] });
+  }
+
+  function setEditSaleLineQuantity(productId: string, quantity: string) {
+    setEditSaleForm((current) => ({
+      ...current,
+      lines: current.lines.map((line) => line.productId === productId ? { ...line, quantity } : line),
+    }));
+  }
+
+  function addEditSaleProduct(productId: string) {
+    const product = data.products.find((item) => item.id === productId);
+    if (!product) return;
+
+    setEditSaleForm((current) => current.lines.some((line) => line.productId === product.id)
+      ? current
+      : {
+        ...current,
+        lines: [...current.lines, {
+          productId: product.id,
+          productName: product.name,
+          unitPrice: Number(product.unit_price),
+          quantity: "1",
+        }],
+      });
+  }
+
+  function removeEditSaleProduct(productId: string) {
+    if (editSaleForm.lines.length <= 1) {
+      setToast({ text: "Hóa đơn cần ít nhất một mặt hàng", type: "error" });
+      return;
+    }
+    setEditSaleForm((current) => ({
+      ...current,
+      lines: current.lines.filter((line) => line.productId !== productId),
+    }));
+  }
+
+  async function saveSaleEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingSale || savingEditSale) return;
+
+    const customerName = editSaleForm.customerName.trim();
+    const invalidLine = editSaleForm.lines.some((line) => !Number.isFinite(Number(line.quantity)) || Number(line.quantity) <= 0);
+    if (!customerName || !editSaleForm.soldDate || editSaleForm.lines.length === 0 || invalidLine) {
+      setToast({ text: "Điền khách hàng, ngày bán và số lượng hợp lệ", type: "error" });
+      return;
+    }
+
+    const exactCustomer = data.customers.find(
+      (customer) => customer.name.toLocaleLowerCase("vi") === customerName.toLocaleLowerCase("vi"),
+    );
+
+    setSavingEditSale(true);
+    try {
+      const response = await fetch(`/api/store-sales?id=${encodeURIComponent(editingSale.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_id: exactCustomer?.id ?? "",
+          customer_name: customerName,
+          sold_date: editSaleForm.soldDate,
+          items: editSaleForm.lines.map((line) => ({
+            id: line.id,
+            product_id: line.productId,
+            quantity: Number(line.quantity),
+          })),
+        }),
+      });
+      if (!response.ok) throw new Error(await getErrorText(response, "Lỗi cập nhật hóa đơn"));
+
+      const refreshed = await loadData();
+      if (refreshed) {
+        setClosingEditSale(true);
+        setToast({ text: "Đã cập nhật hóa đơn", type: "success" });
+      }
+    } catch (error) {
+      setToast({ text: error instanceof Error ? error.message : "Lỗi cập nhật hóa đơn", type: "error" });
+    } finally {
+      setSavingEditSale(false);
+    }
+  }
+
+  function requestDeleteSale(sale: StoreSale) {
+    openConfirm(`Xóa đợt mua của “${sale.customer_name_snapshot}” ngày ${formatDate(sale.sold_date)}?`, async () => {
+      try {
+        const response = await fetch(`/api/store-sales?id=${encodeURIComponent(sale.id)}`, { method: "DELETE" });
+        if (!response.ok) throw new Error(await getErrorText(response, "Lỗi xóa đợt mua"));
+        await loadData();
+        setToast({ text: "Đã xóa đợt mua", type: "success" });
+      } catch (error) {
+        setToast({ text: error instanceof Error ? error.message : "Lỗi xóa đợt mua", type: "error" });
+      }
     });
   }
 
@@ -836,17 +1035,68 @@ function SalesStatsPageContent() {
                         {batches.map((sale) => {
                           const batchQuantity = sale.items.reduce((sum, item) => sum + Number(item.quantity), 0);
                           return (
-                            <div key={sale.id} className="overflow-hidden rounded-xl border border-sky-100 bg-sky-50/50">
+                            <div key={sale.id} className="rounded-xl border border-sky-100 bg-sky-50/50">
                               <div className="flex items-center justify-between gap-3 px-2.5 py-2">
                                 <div className="min-w-0 flex gap-2">
                                   <p className="text-xs font-semibold text-gray-700">{formatDate(sale.sold_date)}</p>
                                   <i className="text-[10px] text-gray-400">tổng: {formatQty(batchQuantity)}</i>
                                 </div>
-                                <span className="max-w-[45%] break-all text-right text-xs font-semibold text-sky-700">
-                                  {formatMoney(Number(sale.total_amount))}
-                                </span>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <span className="max-w-24 break-all text-right text-xs font-semibold text-sky-700">
+                                    {formatMoney(Number(sale.total_amount))}
+                                  </span>
+                                  <div
+                                    className="relative"
+                                    onBlur={(event) => {
+                                      const nextFocus = event.relatedTarget;
+                                      if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus)) {
+                                        setOpenSaleActionId(null);
+                                      }
+                                    }}
+                                  >
+                                    <button
+                                      type="button"
+                                      className=" flex h-6 w-6 items-center justify-center text-gray-500 hover:bg-gray-50"
+                                      onClick={() => setOpenSaleActionId((current) => current === sale.id ? null : sale.id)}
+                                      aria-label={`Mở thao tác cho đợt mua ngày ${formatDate(sale.sold_date)}`}
+                                      aria-haspopup="menu"
+                                      aria-expanded={openSaleActionId === sale.id}
+                                      title="Thao tác"
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </button>
+                                    {openSaleActionId === sale.id && (
+                                      <div
+                                        role="menu"
+                                        className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
+                                      >
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-gray-600 hover:bg-gray-50"
+                                          onClick={() => startEditSale(sale)}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                          Sửa
+                                        </button>
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-red-500 hover:bg-red-50"
+                                          onClick={() => {
+                                            setOpenSaleActionId(null);
+                                            requestDeleteSale(sale);
+                                          }}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                          Xóa
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="divide-y divide-sky-100/80 border-t border-sky-100/80 bg-white/60">
+                              <div className="overflow-hidden rounded-b-xl divide-y divide-sky-100/80 border-t border-sky-100/80 bg-white/60">
                                 {sale.items.map((item) => (
                                   <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1.5">
                                     <div className="min-w-0 ">
@@ -875,6 +1125,116 @@ function SalesStatsPageContent() {
         </Card>
       </div>
 
+      <BottomSheet
+        open={Boolean(editingSale)}
+        closing={closingEditSale}
+        title="Sửa hóa đơn"
+        description={`${editSaleForm.lines.length} mặt hàng · ${formatMoney(editSaleTotal)}`}
+        icon={<Pencil className="h-5 w-5" />}
+        onCloseRequest={requestCloseEditSale}
+        onClosed={finishCloseEditSale}
+        closeLabel="Đóng form sửa hóa đơn"
+        height="86vh"
+        zIndex={50}
+      >
+        <form className="flex min-h-full flex-col gap-4" onSubmit={saveSaleEdit}>
+          <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-2">
+            <label className="space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Khách hàng</span>
+              <Input
+                className="h-11"
+                value={editSaleForm.customerName}
+                onChange={(event) => setEditSaleForm((current) => ({ ...current, customerName: event.target.value }))}
+                list="sales-stats-customer-options"
+                autoComplete="off"
+                autoFocus
+              />
+              <datalist id="sales-stats-customer-options">
+                {data.customers.map((customer) => <option key={customer.id} value={customer.name} />)}
+              </datalist>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ngày bán</span>
+              <Input
+                className="h-11 px-2"
+                type="date"
+                value={editSaleForm.soldDate}
+                onChange={(event) => setEditSaleForm((current) => ({ ...current, soldDate: event.target.value }))}
+              />
+            </label>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Mặt hàng</span>
+              <span className="text-xs font-semibold text-indigo-600">{editSaleForm.lines.length} đã chọn</span>
+            </div>
+
+            <select
+              className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-indigo-400"
+              value=""
+              onChange={(event) => addEditSaleProduct(event.target.value)}
+              disabled={availableEditProducts.length === 0}
+              aria-label="Thêm mặt hàng vào hóa đơn"
+            >
+              <option value="" disabled>
+                {availableEditProducts.length > 0 ? "+ Thêm mặt hàng" : "Đã chọn tất cả mặt hàng"}
+              </option>
+              {availableEditProducts.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name} · {formatMoney(Number(product.unit_price))}
+                </option>
+              ))}
+            </select>
+
+            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+              {editSaleForm.lines.map((line) => (
+                <div
+                  key={line.id ?? line.productId}
+                  className="flex min-h-16 items-center gap-2 border-t border-gray-100 px-3 py-2 first:border-t-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900">{line.productName}</p>
+                    <p className="text-xs text-gray-400">
+                      {formatMoney(line.unitPrice)} · {formatMoney(line.unitPrice * (Number(line.quantity) || 0))}
+                    </p>
+                  </div>
+                  <FormattedNumberInput
+                    className="h-9 w-20 px-2 text-center font-bold"
+                    value={line.quantity}
+                    onValueChange={(value) => setEditSaleLineQuantity(line.productId, value)}
+                    aria-label={`Số lượng ${line.productName}`}
+                  />
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500 disabled:opacity-40"
+                    onClick={() => removeEditSaleProduct(line.productId)}
+                    disabled={editSaleForm.lines.length <= 1}
+                    aria-label={`Xóa ${line.productName} khỏi hóa đơn`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="sticky bottom-0 -mx-5 -mb-4 mt-auto border-t border-gray-100 bg-white px-5 pb-3 pt-3 shadow-[0_-8px_20px_rgba(255,255,255,0.95)]">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-gray-600">Tổng hóa đơn</span>
+              <span className="text-xl font-bold text-indigo-700">{formatMoney(editSaleTotal)}</span>
+            </div>
+            <button
+              type="submit"
+              disabled={savingEditSale}
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-indigo-600 text-sm font-semibold text-white disabled:bg-indigo-300"
+            >
+              {savingEditSale ? "Đang lưu..." : "Lưu thay đổi"}
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
+
       {showProductFilter && (
         <ProductFilterSheet
           products={data.products}
@@ -885,6 +1245,8 @@ function SalesStatsPageContent() {
           onAnimationEnd={handleProductFilterAnimEnd}
         />
       )}
+
+      {confirmModal}
     </>
   );
 }

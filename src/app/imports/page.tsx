@@ -6,17 +6,13 @@ import { v4 as uuidv4 } from "uuid";
 import {
   BarChart3,
   ChevronDown,
-  MoreVertical,
   PackagePlus,
-  Pencil,
-  Save,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
-import { useConfirm } from "@/components/ui/confirm-modal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { Badge } from "@/components/ui/badge";
@@ -113,21 +109,12 @@ export default function ImportsPage() {
     importedDate: todayStr(),
     quantity: "",
   });
-  const [editForm, setEditForm] = useState<ImportForm>({
-    name: "",
-    unitCost: "",
-    importedDate: todayStr(),
-    quantity: "",
-  });
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
-  const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastMsg | null>(null);
-  const [openConfirm, confirmModal] = useConfirm();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -198,10 +185,6 @@ export default function ImportsPage() {
     setForm((current) => ({ ...current, [field]: value }));
   }, []);
 
-  const updateEditForm = useCallback((field: keyof ImportForm, value: string) => {
-    setEditForm((current) => ({ ...current, [field]: value }));
-  }, []);
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
@@ -230,63 +213,6 @@ export default function ImportsPage() {
     } finally {
       setSaving(false);
     }
-  }
-
-  function startEdit(item: AccessoryImport) {
-    setOpenActionId(null);
-    setEditingId(item.id);
-    setEditForm({
-      name: item.name,
-      unitCost: String(item.unit_cost),
-      importedDate: item.imported_date,
-      quantity: String(item.quantity),
-    });
-  }
-
-  async function saveEdit(itemId: string) {
-    const parsed = toPayload(editForm);
-    if (parsed.error) {
-      setToast({ text: parsed.error, type: "error" });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/accessory-imports?id=${itemId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed.payload),
-      });
-      if (!res.ok) throw new Error("Failed to update accessory import");
-      const saved = (await res.json()) as AccessoryImport;
-      invalidateAccessoryImportStatsCache();
-      setItems((current) => sortImports(current.map((item) => (item.id === itemId ? saved : item))));
-      setEditingId(null);
-      setToast({ text: "Đã cập nhật lần nhập", type: "success" });
-    } catch {
-      setToast({ text: "Lỗi cập nhật nhập kho", type: "error" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function requestDelete(item: AccessoryImport) {
-    setOpenActionId(null);
-    openConfirm(
-      `Xoá lần nhập "${item.name}" ngày ${fmtDate(item.imported_date)}?`,
-      async () => {
-        try {
-          const res = await fetch(`/api/accessory-imports?id=${item.id}`, { method: "DELETE" });
-          if (!res.ok) throw new Error("Failed to delete accessory import");
-          invalidateAccessoryImportStatsCache();
-          setItems((current) => current.filter((currentItem) => currentItem.id !== item.id));
-          if (editingId === item.id) setEditingId(null);
-          setToast({ text: "Đã xoá lần nhập", type: "success" });
-        } catch {
-          setToast({ text: "Lỗi xoá nhập kho", type: "error" });
-        }
-      },
-    );
   }
 
   return (
@@ -361,23 +287,16 @@ export default function ImportsPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  <Input
+                  <FormattedNumberInput
                     className="w-1/3"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
                     value={form.quantity}
-                    onChange={(e) => updateForm("quantity", e.target.value)}
+                    onValueChange={(value) => updateForm("quantity", value)}
                     placeholder="Số lượng"
                   />
-                  <Input
+                  <FormattedNumberInput
                     className="w-1/3"
-                    type="number"
-                    min={0}
-                    inputMode="decimal"
                     value={form.unitCost}
-                    onChange={(e) => updateForm("unitCost", e.target.value)}
+                    onValueChange={(value) => updateForm("unitCost", value)}
                     placeholder="Giá tiền"
                   />
                   <Input
@@ -464,131 +383,25 @@ export default function ImportsPage() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    {group.batches.slice(0, 3).map((item) => {
-                      const isEditing = editingId === item.id;
-
-                      if (isEditing) {
-                        return (
-                          <div key={item.id} className="rounded-xl border border-amber-100 bg-amber-50/40 p-2 space-y-2">
-                            <Input
-                              value={editForm.name}
-                              onChange={(e) => updateEditForm("name", e.target.value)}
-                              className="h-10"
-                            />
-                            <div className="grid grid-cols-3 gap-2">
-                              <Input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                inputMode="decimal"
-                                value={editForm.quantity}
-                                onChange={(e) => updateEditForm("quantity", e.target.value)}
-                                className="h-10"
-                              />
-                              <Input
-                                type="number"
-                                min={0}
-                                inputMode="decimal"
-                                value={editForm.unitCost}
-                                onChange={(e) => updateEditForm("unitCost", e.target.value)}
-                                className="h-10"
-                              />
-                              <Input
-                                type="date"
-                                value={editForm.importedDate}
-                                onChange={(e) => updateEditForm("importedDate", e.target.value)}
-                                className="h-10 px-2"
-                              />
-                            </div>
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                className="w-9 h-9 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-gray-500"
-                                onClick={() => setEditingId(null)}
-                                aria-label="Huỷ sửa"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white disabled:bg-emerald-300"
-                                disabled={saving}
-                                onClick={() => saveEdit(item.id)}
-                                aria-label="Lưu sửa"
-                              >
-                                <Save className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="text-xs text-gray-500 grid grid-cols-[minmax(0,1fr)_minmax(0,42%)_2rem] items-center gap-x-2 border-b border-gray-100 px-2 py-2 last:border-b-0"
-                        >
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-gray-800">{fmtDate(item.imported_date)}</span>
-                            <span className="break-all leading-snug">
-                              sl: {formatQty(item.quantity)}
-                            </span>
-                          </div>
-                          <div className="min-w-0 flex flex-col items-end text-right leading-tight">
-                            <span className="max-w-full break-all font-semibold text-gray-900">{formatMoney(item.unit_cost)}</span>
-                            <span className="max-w-full break-all text-[11px] font-semibold text-emerald-600">
-                              {formatMoney(item.quantity * item.unit_cost)}
-                            </span>
-                          </div>
-                          <div
-                            className="relative justify-self-end"
-                            onBlur={(e) => {
-                              const nextFocus = e.relatedTarget;
-                              if (!(nextFocus instanceof Node) || !e.currentTarget.contains(nextFocus)) {
-                                setOpenActionId(null);
-                              }
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100"
-                              onClick={() => setOpenActionId((current) => (current === item.id ? null : item.id))}
-                              aria-label={`Mở thao tác cho ${item.name} ngày ${fmtDate(item.imported_date)}`}
-                              aria-haspopup="menu"
-                              aria-expanded={openActionId === item.id}
-                              title="Thao tác"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                            {openActionId === item.id && (
-                              <div
-                                role="menu"
-                                className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
-                              >
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="h-9 w-full px-3 flex items-center gap-2 text-left text-xs font-medium text-gray-600 hover:bg-gray-50"
-                                  onClick={() => startEdit(item)}
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                  Sửa
-                                </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="h-9 w-full px-3 flex items-center gap-2 text-left text-xs font-medium text-red-500 hover:bg-red-50"
-                                  onClick={() => requestDelete(item)}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  Xoá
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                    {group.batches.slice(0, 3).map((item) => (
+                      <div
+                        key={item.id}
+                        className="text-xs text-gray-500 grid grid-cols-[minmax(0,1fr)_minmax(0,42%)] items-center gap-x-2 border-b border-gray-100 px-2 py-2 last:border-b-0"
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-gray-800">{fmtDate(item.imported_date)}</span>
+                          <span className="break-all leading-snug">
+                            sl: {formatQty(item.quantity)}
+                          </span>
                         </div>
-                      );
-                    })}
+                        <div className="min-w-0 flex flex-col items-end text-right leading-tight">
+                          <span className="max-w-full break-all font-semibold text-gray-900">{formatMoney(item.unit_cost)}</span>
+                          <span className="max-w-full break-all text-[11px] font-semibold text-emerald-600">
+                            {formatMoney(item.quantity * item.unit_cost)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                     <Link
                       href={{
                         pathname: "/imports/stats",
@@ -613,8 +426,6 @@ export default function ImportsPage() {
           ))}
         </div>
       </div>
-
-      {confirmModal}
     </>
   );
 }

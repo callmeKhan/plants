@@ -10,7 +10,6 @@ import {
   FileText,
   Mic,
   MicOff,
-  MoreVertical,
   PackagePlus,
   Pencil,
   Plus,
@@ -30,6 +29,7 @@ import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Collapse } from "@/components/ui/collapse";
 import { useConfirm } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
 import { Toast, type ToastMsg } from "@/components/ui/toast";
 import {
   normalizeStoreSalesData,
@@ -365,8 +365,8 @@ export default function SalesPage() {
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [openActionId, setOpenActionId] = useState<string | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const editSaleRequestHandledRef = useRef(false);
   const quantityInputRefs = useRef(new Map<string, HTMLInputElement>());
   const [openConfirm, confirmModal] = useConfirm();
 
@@ -396,6 +396,49 @@ export default function SalesPage() {
     void initialLoad();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (loading || editSaleRequestHandledRef.current) return;
+
+    const url = new URL(window.location.href);
+    const editSaleId = url.searchParams.get("editSaleId")?.trim();
+    editSaleRequestHandledRef.current = true;
+    if (!editSaleId) return;
+
+    url.searchParams.delete("editSaleId");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+
+    const sale = data.sales.find((item) => item.id === editSaleId);
+    if (!sale) {
+      window.setTimeout(() => {
+        setToast({ text: "Không tìm thấy hóa đơn cần sửa", type: "error" });
+      }, 0);
+      return;
+    }
+
+    window.setTimeout(() => {
+      setOpenProductForm(false);
+      setClosingSaleSheet(false);
+      setConfirmingSale(false);
+      setShowSaleSummary(false);
+      setEditingSaleId(sale.id);
+      setSaleForm({
+        customerId: sale.customer_id ?? "",
+        customerName: sale.customer_name_snapshot,
+        soldDate: sale.sold_date,
+        lines: sale.items.map((item) => ({
+          id: item.id,
+          productId: item.product_id,
+          productName: item.product_name_snapshot,
+          unitPrice: Number(item.unit_price_snapshot),
+          quantity: String(item.quantity),
+        })),
+      });
+      setSaleProductQuery("");
+      setVoiceTranscript("");
+      setOpenSaleForm(true);
+    }, 0);
+  }, [data.sales, loading]);
 
   useEffect(() => {
     if (!openSaleForm) return;
@@ -513,30 +556,6 @@ export default function SalesPage() {
     setShowSaleSummary(false);
     setEditingSaleId(null);
     setSaleForm(emptySaleForm());
-    setSaleProductQuery("");
-    setVoiceTranscript("");
-    setOpenSaleForm(true);
-  }
-
-  function startEditSale(sale: StoreSale) {
-    setOpenActionId(null);
-    setOpenProductForm(false);
-    setClosingSaleSheet(false);
-    setConfirmingSale(false);
-    setShowSaleSummary(false);
-    setEditingSaleId(sale.id);
-    setSaleForm({
-      customerId: sale.customer_id ?? "",
-      customerName: sale.customer_name_snapshot,
-      soldDate: sale.sold_date,
-      lines: sale.items.map((item) => ({
-        id: item.id,
-        productId: item.product_id,
-        productName: item.product_name_snapshot,
-        unitPrice: Number(item.unit_price_snapshot),
-        quantity: String(item.quantity),
-      })),
-    });
     setSaleProductQuery("");
     setVoiceTranscript("");
     setOpenSaleForm(true);
@@ -964,21 +983,6 @@ export default function SalesPage() {
     });
   }
 
-  function requestDeleteSale(sale: StoreSale) {
-    setOpenActionId(null);
-    openConfirm(`Xoá hóa đơn của “${sale.customer_name_snapshot}” ngày ${fmtDate(sale.sold_date)}?`, async () => {
-      try {
-        const response = await fetch(`/api/store-sales?id=${encodeURIComponent(sale.id)}`, { method: "DELETE" });
-        if (!response.ok) throw new Error(await getErrorText(response, "Lỗi xoá hóa đơn"));
-        if (editingSaleId === sale.id) closeSaleForm();
-        await loadData();
-        setToast({ text: "Đã xoá hóa đơn", type: "success" });
-      } catch (error) {
-        setToast({ text: error instanceof Error ? error.message : "Lỗi xoá hóa đơn", type: "error" });
-      }
-    });
-  }
-
   return (
     <>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
@@ -1028,13 +1032,10 @@ export default function SalesPage() {
                   onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))}
                   placeholder="Tên mặt hàng, ví dụ: catt nhỏ"
                 />
-                <Input
+                <FormattedNumberInput
                   className="h-11"
-                  type="number"
-                  min={0}
-                  inputMode="decimal"
                   value={productForm.unitPrice}
-                  onChange={(event) => setProductForm((current) => ({ ...current, unitPrice: event.target.value }))}
+                  onValueChange={(value) => setProductForm((current) => ({ ...current, unitPrice: value }))}
                   placeholder="Giá bán"
                 />
                 <Button type="submit" disabled={saving} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700">
@@ -1104,13 +1105,10 @@ export default function SalesPage() {
                         value={editProductForm.name}
                         onChange={(event) => setEditProductForm((current) => ({ ...current, name: event.target.value }))}
                       />
-                      <Input
+                      <FormattedNumberInput
                         className="h-10"
-                        type="number"
-                        min={0}
-                        inputMode="decimal"
                         value={editProductForm.unitPrice}
-                        onChange={(event) => setEditProductForm((current) => ({ ...current, unitPrice: event.target.value }))}
+                        onValueChange={(value) => setEditProductForm((current) => ({ ...current, unitPrice: value }))}
                       />
                       <div className="flex justify-end gap-2">
                         <button
@@ -1180,7 +1178,7 @@ export default function SalesPage() {
                         {group.batches.slice(0, 3).map(({ sale, item }) => (
                             <div
                               key={item.id}
-                              className="text-xs text-gray-500 grid grid-cols-[minmax(0,1fr)_minmax(0,38%)_2rem] items-center gap-x-2 border-b border-gray-100 px-1 py-2 last:border-b-0"
+                              className="text-xs text-gray-500 grid grid-cols-[minmax(0,1fr)_minmax(0,38%)] items-center gap-x-2 border-b border-gray-100 px-1 py-2 last:border-b-0"
                             >
                               <div className="min-w-0 flex flex-col">
                                 <span className="font-semibold text-gray-800">{fmtDate(sale.sold_date)}</span>
@@ -1191,48 +1189,6 @@ export default function SalesPage() {
                                 <span className="text-[11px] font-semibold text-indigo-600 break-all">
                                   {formatMoney(Number(item.line_total))}
                                 </span>
-                              </div>
-                              <div
-                                className="relative justify-self-end"
-                                onBlur={(event) => {
-                                  const nextFocus = event.relatedTarget;
-                                  if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus)) {
-                                    setOpenActionId(null);
-                                  }
-                                }}
-                              >
-                                <button
-                                  type="button"
-                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100"
-                                  onClick={() => setOpenActionId((current) => current === item.id ? null : item.id)}
-                                  aria-label="Thao tác hóa đơn"
-                                  aria-haspopup="menu"
-                                  aria-expanded={openActionId === item.id}
-                                >
-                                  <MoreVertical className="w-4 h-4" />
-                                </button>
-                                {openActionId === item.id && (
-                                  <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg">
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      className="h-9 w-full px-3 flex items-center gap-2 text-left text-xs font-medium text-gray-600 hover:bg-gray-50"
-                                      onClick={() => startEditSale(sale)}
-                                    >
-                                      <Pencil className="w-3.5 h-3.5" />
-                                      Sửa
-                                    </button>
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      className="h-9 w-full px-3 flex items-center gap-2 text-left text-xs font-medium text-red-500 hover:bg-red-50"
-                                      onClick={() => requestDeleteSale(sale)}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                      Xoá
-                                    </button>
-                                  </div>
-                                )}
                               </div>
                             </div>
                         ))}
@@ -1424,18 +1380,14 @@ export default function SalesPage() {
                       </div>
                       {line ? (
                         <div className="flex shrink-0 items-center gap-1">
-                          <Input
+                          <FormattedNumberInput
                             ref={(input) => {
                               if (input) quantityInputRefs.current.set(product.id, input);
                               else quantityInputRefs.current.delete(product.id);
                             }}
                             className="h-9 w-16 px-1 text-center font-bold"
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            inputMode="decimal"
                             value={line.quantity}
-                            onChange={(event) => setSaleLineQuantity(product.id, event.target.value)}
+                            onValueChange={(value) => setSaleLineQuantity(product.id, value)}
                             aria-label={`Số lượng ${product.name}`}
                           />
                           <button
