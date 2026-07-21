@@ -1,22 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { v4 as uuidv4 } from "uuid";
 import {
   BarChart3,
   ChevronDown,
+  FileText,
   PackagePlus,
+  Plus,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { AppDatePicker } from "@/components/ui/app-date-picker";
-import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
-import { Toast, type ToastMsg } from "@/components/ui/toast";
-import { Card, CardContent } from "@/components/ui/card";
-import { Collapse } from "@/components/ui/collapse";
 import { Badge } from "@/components/ui/badge";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { useConfirm } from "@/components/ui/confirm-modal";
+import { FormattedNumberInput } from "@/components/ui/formatted-number-input";
+import { Input } from "@/components/ui/input";
+import { Toast, type ToastMsg } from "@/components/ui/toast";
 import { invalidateAccessoryImportStatsCache } from "@/lib/accessory-import-stats-cache";
 
 type AccessoryImport = {
@@ -29,11 +35,17 @@ type AccessoryImport = {
   updated_at: string;
 };
 
-type ImportForm = {
+type ImportLine = {
+  id: string;
+  key: string;
   name: string;
   unitCost: string;
-  importedDate: string;
   quantity: string;
+};
+
+type ImportForm = {
+  importedDate: string;
+  lines: ImportLine[];
 };
 
 type AccessoryImportGroup = {
@@ -46,6 +58,10 @@ type AccessoryImportGroup = {
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function emptyImportForm(): ImportForm {
+  return { importedDate: todayStr(), lines: [] };
 }
 
 function fmtDate(d: string) {
@@ -79,43 +95,142 @@ function sortBatches(items: AccessoryImport[]) {
 }
 
 function accessoryKey(name: string) {
-  return name.trim().toLowerCase();
+  return name.trim().toLocaleLowerCase("vi");
 }
 
-function toPayload(form: ImportForm) {
-  const name = form.name.trim();
-  const unitCost = Number(form.unitCost);
-  const quantity = Number(form.quantity);
+function normalizedSearch(value: string) {
+  return value
+    .toLocaleLowerCase("vi")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .trim();
+}
 
-  if (!name) return { error: "Tên mặt hàng là bắt buộc" };
-  if (!form.importedDate) return { error: "Ngày nhập là bắt buộc" };
-  if (!Number.isFinite(unitCost) || unitCost < 0) return { error: "Giá thành không hợp lệ" };
-  if (!Number.isFinite(quantity) || quantity <= 0) return { error: "Số lượng phải lớn hơn 0" };
+async function getErrorText(response: Response, fallback: string) {
+  try {
+    const body = await response.json() as { error?: string };
+    return body.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
-  return {
-    payload: {
-      name,
-      unit_cost: unitCost,
-      imported_date: form.importedDate,
-      quantity,
-    },
-  };
+function ImportConfirmationModal({
+  form,
+  total,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  form: ImportForm;
+  total: number;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/50 px-4 py-5"
+      style={{ zIndex: 60 }}
+      onClick={() => {
+        if (!saving) onCancel();
+      }}
+    >
+      <div
+        className="flex max-h-full w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-confirmation-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-gray-100 px-5 pb-3 pt-5 text-center">
+          <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+            <FileText className="h-5 w-5" />
+          </div>
+          <h2 id="import-confirmation-title" className="font-bold text-gray-900">
+            Xác nhận đợt nhập
+          </h2>
+          <p className="mt-0.5 text-xs text-gray-400">Kiểm tra lần cuối trước khi lưu</p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div className="mb-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+            <span className="text-gray-400">Ngày nhập</span>
+            <span className="text-right font-semibold text-gray-800">{fmtDate(form.importedDate)}</span>
+            <span className="text-gray-400">Mặt hàng</span>
+            <span className="text-right font-semibold text-gray-800">{form.lines.length} sản phẩm</span>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-gray-100">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              <span>Mặt hàng</span>
+              <span>Thành tiền</span>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {form.lines.map((line) => {
+                const quantity = Number(line.quantity);
+                const unitCost = Number(line.unitCost);
+                return (
+                  <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-800">{line.name}</p>
+                      <p className="text-[11px] text-gray-400">
+                        {formatQty(quantity)} x {formatMoney(unitCost)}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-gray-800">
+                      {formatMoney(quantity * unitCost)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-dashed border-gray-200 pt-3">
+            <span className="font-semibold text-gray-600">Tổng vốn đợt nhập</span>
+            <span className="text-xl font-bold text-amber-700">{formatMoney(total)}</span>
+          </div>
+        </div>
+
+        <div className="flex gap-2 border-t border-gray-100 px-5 pb-5 pt-3">
+          <button
+            type="button"
+            className="h-11 flex-1 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 disabled:opacity-50"
+            onClick={onCancel}
+            disabled={saving}
+          >
+            Quay lại sửa
+          </button>
+          <button
+            type="button"
+            className="h-11 flex-1 rounded-xl bg-amber-500 text-sm font-semibold text-white disabled:bg-amber-300"
+            onClick={onConfirm}
+            disabled={saving}
+          >
+            {saving ? "Đang lưu..." : "Xác nhận & lưu"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 export default function ImportsPage() {
   const [items, setItems] = useState<AccessoryImport[]>([]);
-  const [form, setForm] = useState<ImportForm>({
-    name: "",
-    unitCost: "",
-    importedDate: todayStr(),
-    quantity: "",
-  });
+  const [importForm, setImportForm] = useState<ImportForm>(emptyImportForm);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
-  const [openForm, setOpenForm] = useState(false);
+  const [importProductQuery, setImportProductQuery] = useState("");
+  const [openImportSheet, setOpenImportSheet] = useState(false);
+  const [closingImportSheet, setClosingImportSheet] = useState(false);
+  const [showImportSummary, setShowImportSummary] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastMsg | null>(null);
+  const [openConfirm, confirmModal] = useConfirm();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -127,8 +242,8 @@ export default function ImportsPage() {
         if (!res.ok) throw new Error("Failed to load accessory imports");
         const data = (await res.json()) as AccessoryImport[];
         setItems(sortImports(data));
-      } catch (e) {
-        if (!(e instanceof DOMException && e.name === "AbortError")) {
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
           setToast({ text: "Lỗi tải dữ liệu nhập kho", type: "error" });
         }
       } finally {
@@ -136,9 +251,46 @@ export default function ImportsPage() {
       }
     }
 
-    loadImports();
+    void loadImports();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!openImportSheet) return;
+
+    const scrollY = window.scrollY;
+    const bodyStyle = document.body.style;
+    const htmlStyle = document.documentElement.style;
+    const previousBodyPosition = bodyStyle.position;
+    const previousBodyTop = bodyStyle.top;
+    const previousBodyLeft = bodyStyle.left;
+    const previousBodyRight = bodyStyle.right;
+    const previousBodyWidth = bodyStyle.width;
+    const previousBodyOverflow = bodyStyle.overflow;
+    const previousBodyOverscroll = bodyStyle.overscrollBehavior;
+    const previousHtmlOverscroll = htmlStyle.overscrollBehavior;
+
+    bodyStyle.position = "fixed";
+    bodyStyle.top = `-${scrollY}px`;
+    bodyStyle.left = "0";
+    bodyStyle.right = "0";
+    bodyStyle.width = "100%";
+    bodyStyle.overflow = "hidden";
+    bodyStyle.overscrollBehavior = "none";
+    htmlStyle.overscrollBehavior = "none";
+
+    return () => {
+      bodyStyle.position = previousBodyPosition;
+      bodyStyle.top = previousBodyTop;
+      bodyStyle.left = previousBodyLeft;
+      bodyStyle.right = previousBodyRight;
+      bodyStyle.width = previousBodyWidth;
+      bodyStyle.overflow = previousBodyOverflow;
+      bodyStyle.overscrollBehavior = previousBodyOverscroll;
+      htmlStyle.overscrollBehavior = previousHtmlOverscroll;
+      window.scrollTo(0, scrollY);
+    };
+  }, [openImportSheet]);
 
   const accessoryGroups = useMemo<AccessoryImportGroup[]>(() => {
     const map = new Map<string, AccessoryImportGroup>();
@@ -167,50 +319,203 @@ export default function ImportsPage() {
   }, [items]);
 
   const filteredGroups = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = normalizedSearch(searchQuery);
     if (!query) return accessoryGroups;
-    return accessoryGroups.filter((group) => group.name.toLowerCase().includes(query));
+    return accessoryGroups.filter((group) => normalizedSearch(group.name).includes(query));
   }, [accessoryGroups, searchQuery]);
 
-  const nameSuggestions = useMemo(() => {
-    const query = form.name.trim().toLowerCase();
-    return accessoryGroups
-      .filter((group) => {
-        if (!query) return false;
-        return group.name.toLowerCase().includes(query) && group.name.toLowerCase() !== query;
-      })
-      .slice(0, 8);
-  }, [accessoryGroups, form.name]);
+  const importLineByKey = useMemo(
+    () => new Map(importForm.lines.map((line) => [line.key, line])),
+    [importForm.lines],
+  );
 
-  const updateForm = useCallback((field: keyof ImportForm, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
-  }, []);
+  const quickImportProducts = useMemo(() => {
+    const options = [...accessoryGroups];
+    const existingKeys = new Set(options.map((option) => option.key));
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (saving) return;
+    for (const line of importForm.lines) {
+      if (existingKeys.has(line.key)) continue;
+      options.push({
+        key: line.key,
+        name: line.name,
+        batches: [],
+        totalQuantity: 0,
+        totalValue: 0,
+      });
+    }
 
-    const parsed = toPayload(form);
-    if (parsed.error) {
-      setToast({ text: parsed.error, type: "error" });
+    const query = normalizedSearch(importProductQuery);
+    return options
+      .filter((option) => !query || normalizedSearch(option.name).includes(query))
+      .sort((a, b) => {
+        const selectedOrder = Number(importLineByKey.has(b.key)) - Number(importLineByKey.has(a.key));
+        return selectedOrder || a.name.localeCompare(b.name, "vi", { sensitivity: "base", numeric: true });
+      });
+  }, [accessoryGroups, importForm.lines, importLineByKey, importProductQuery]);
+
+  const exactQueryGroup = useMemo(() => {
+    const queryKey = accessoryKey(importProductQuery);
+    if (!queryKey) return null;
+    return accessoryGroups.find((group) => group.key === queryKey) ?? null;
+  }, [accessoryGroups, importProductQuery]);
+
+  const canCreateQueriedProduct = Boolean(
+    importProductQuery.trim()
+      && !exactQueryGroup
+      && !importLineByKey.has(accessoryKey(importProductQuery)),
+  );
+
+  const importTotal = useMemo(() => importForm.lines.reduce((sum, line) => {
+    const quantity = Number(line.quantity);
+    const unitCost = Number(line.unitCost);
+    return sum + (Number.isFinite(quantity) && Number.isFinite(unitCost) ? quantity * unitCost : 0);
+  }, 0), [importForm.lines]);
+
+  function startNewImport() {
+    setImportForm(emptyImportForm());
+    setImportProductQuery("");
+    setClosingImportSheet(false);
+    setShowImportSummary(false);
+    setConfirmingImport(false);
+    setOpenImportSheet(true);
+  }
+
+  function closeImportSheet() {
+    setClosingImportSheet(false);
+    setOpenImportSheet(false);
+    setImportForm(emptyImportForm());
+    setImportProductQuery("");
+    setShowImportSummary(false);
+    setConfirmingImport(false);
+  }
+
+  function requestCloseImportSheet() {
+    setClosingImportSheet(true);
+  }
+
+  function clearImportDraft() {
+    setImportForm(emptyImportForm());
+    setImportProductQuery("");
+    setShowImportSummary(false);
+    setConfirmingImport(false);
+  }
+
+  function requestClearImportDraft() {
+    openConfirm("Xóa toàn bộ nội dung đang nhập trong form nhập kho?", clearImportDraft);
+  }
+
+  function selectProductForImport(group: AccessoryImportGroup) {
+    setImportForm((current) => current.lines.some((line) => line.key === group.key)
+      ? current
+      : {
+        ...current,
+        lines: [...current.lines, {
+          id: uuidv4(),
+          key: group.key,
+          name: group.name,
+          unitCost: group.batches[0] ? String(group.batches[0].unit_cost) : "",
+          quantity: "1",
+        }],
+      });
+  }
+
+  function addQueriedProduct() {
+    const name = importProductQuery.trim();
+    if (!name) return;
+
+    if (exactQueryGroup) {
+      selectProductForImport(exactQueryGroup);
+      setImportProductQuery("");
       return;
     }
 
+    const key = accessoryKey(name);
+    setImportForm((current) => current.lines.some((line) => line.key === key)
+      ? current
+      : {
+        ...current,
+        lines: [...current.lines, {
+          id: uuidv4(),
+          key,
+          name,
+          unitCost: "",
+          quantity: "1",
+        }],
+      });
+    setImportProductQuery("");
+  }
+
+  function updateImportLine(lineId: string, field: "quantity" | "unitCost", value: string) {
+    setImportForm((current) => ({
+      ...current,
+      lines: current.lines.map((line) => line.id === lineId ? { ...line, [field]: value } : line),
+    }));
+  }
+
+  function removeImportLine(lineId: string) {
+    setImportForm((current) => ({
+      ...current,
+      lines: current.lines.filter((line) => line.id !== lineId),
+    }));
+  }
+
+  function requestImportConfirmation(event: FormEvent) {
+    event.preventDefault();
+    if (saving) return;
+
+    if (!importForm.importedDate) {
+      setToast({ text: "Ngày nhập là bắt buộc", type: "error" });
+      return;
+    }
+    if (importForm.lines.length === 0) {
+      setToast({ text: "Hãy chọn ít nhất một mặt hàng", type: "error" });
+      return;
+    }
+
+    const invalidLine = importForm.lines.find((line) => {
+      const quantity = Number(line.quantity);
+      const unitCost = Number(line.unitCost);
+      return !line.name.trim()
+        || !line.unitCost.trim()
+        || !Number.isFinite(quantity)
+        || quantity <= 0
+        || !Number.isFinite(unitCost)
+        || unitCost < 0;
+    });
+    if (invalidLine) {
+      setToast({ text: `Kiểm tra số lượng và giá vốn của “${invalidLine.name}”`, type: "error" });
+      return;
+    }
+
+    setConfirmingImport(true);
+  }
+
+  async function confirmAndSaveImport() {
     setSaving(true);
     try {
-      const res = await fetch("/api/accessory-imports", {
+      const response = await fetch("/api/accessory-imports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: uuidv4(), ...parsed.payload }),
+        body: JSON.stringify({
+          items: importForm.lines.map((line) => ({
+            id: line.id,
+            name: line.name.trim(),
+            unit_cost: Number(line.unitCost),
+            imported_date: importForm.importedDate,
+            quantity: Number(line.quantity),
+          })),
+        }),
       });
-      if (!res.ok) throw new Error("Failed to save accessory import");
-      const saved = (await res.json()) as AccessoryImport;
+      if (!response.ok) throw new Error(await getErrorText(response, "Lỗi lưu nhập kho"));
+
+      const saved = (await response.json()) as AccessoryImport[];
       invalidateAccessoryImportStatsCache();
-      setItems((current) => sortImports([...current, saved]));
-      setForm({ name: "", unitCost: "", importedDate: todayStr(), quantity: "" });
-      setToast({ text: "Đã lưu lần nhập phụ kiện", type: "success" });
-    } catch {
-      setToast({ text: "Lỗi lưu nhập kho", type: "error" });
+      setItems((current) => sortImports([...current, ...saved]));
+      setConfirmingImport(false);
+      closeImportSheet();
+      setToast({ text: `Đã lưu ${saved.length} mặt hàng nhập kho`, type: "success" });
+    } catch (error) {
+      setToast({ text: error instanceof Error ? error.message : "Lỗi lưu nhập kho", type: "error" });
     } finally {
       setSaving(false);
     }
@@ -222,11 +527,7 @@ export default function ImportsPage() {
 
       <div className="max-w-lg mx-auto space-y-4">
         <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => setOpenForm((v) => !v)}
-            className="min-w-0 flex-1 flex items-center gap-3 text-left"
-          >
+          <div className="min-w-0 flex-1 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shadow-sm shrink-0">
               <PackagePlus className="w-5 h-5 text-white" />
             </div>
@@ -234,11 +535,7 @@ export default function ImportsPage() {
               <h1 className="text-lg font-bold text-gray-900 leading-tight">Nhập phụ kiện</h1>
               <p className="text-xs text-gray-400">Kéo cắt, chậu, dây, băng keo</p>
             </div>
-            <ChevronDown
-              className="w-5 h-5 text-gray-400 transition-transform duration-200 shrink-0"
-              style={{ transform: openForm ? "rotate(180deg)" : "rotate(0deg)" }}
-            />
-          </button>
+          </div>
           <Link
             href="/imports/stats"
             prefetch={false}
@@ -250,84 +547,20 @@ export default function ImportsPage() {
           </Link>
         </div>
 
-        <Collapse open={openForm}>
-          <Card>
-            <CardContent className="pt-4">
-              <form onSubmit={handleSubmit} className="space-y-3">
-                <div className="relative">
-                  <Input
-                    value={form.name}
-                    onChange={(e) => {
-                      updateForm("name", e.target.value);
-                      setShowNameSuggestions(true);
-                    }}
-                    onFocus={() => setShowNameSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowNameSuggestions(false), 150)}
-                    placeholder="📦 Tên mặt hàng"
-                    autoComplete="off"
-                  />
-                  {showNameSuggestions && nameSuggestions.length > 0 && (
-                    <ul className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl max-h-48 overflow-y-auto text-sm divide-y divide-gray-50 shadow-sm">
-                      {nameSuggestions.map((group) => (
-                        <li
-                          key={group.key}
-                          className="px-4 py-2.5 hover:bg-amber-50 cursor-pointer flex items-center justify-between gap-3"
-                          onMouseDown={() => {
-                            updateForm("name", group.name);
-                            setShowNameSuggestions(false);
-                          }}
-                        >
-                          <span className="font-medium text-gray-800 truncate">{group.name}</span>
-                          <Badge variant="secondary" className="shrink-0">
-                            {group.batches.length} lần nhập
-                          </Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                <div className="flex gap-2">
-                  <FormattedNumberInput
-                    className="w-[65px]"
-                    value={form.quantity}
-                    onValueChange={(value) => updateForm("quantity", value)}
-                    placeholder="Số lượng"
-                  />
-                  <FormattedNumberInput
-                    className="w-1/3"
-                    value={form.unitCost}
-                    onValueChange={(value) => updateForm("unitCost", value)}
-                    placeholder="Giá tiền"
-                  />
-                  <AppDatePicker
-                    ariaLabel="Ngày nhập phụ kiện"
-                    className="w-[145px]"
-                    height={32}
-                    value={form.importedDate}
-                    onValueChange={(value) => updateForm("importedDate", value)}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={saving}
-                  style={{ backgroundColor: "#d97706", color: "white" }}
-                  className="w-full h-11 rounded-xl font-semibold text-base flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.99] transition-all disabled:opacity-60"
-                >
-                  <PackagePlus className="w-4 h-4" />
-                  {saving ? "Đang lưu" : "Lưu"}
-                </button>
-              </form>
-            </CardContent>
-          </Card>
-        </Collapse>
+        <Button
+          type="button"
+          className="h-11 w-full bg-amber-500 hover:bg-amber-600"
+          onClick={startNewImport}
+        >
+          <PackagePlus className="w-4 h-4" />
+          + Tạo mới
+        </Button>
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Tìm mặt hàng"
             className="h-10 pl-9 pr-9"
           />
@@ -392,9 +625,7 @@ export default function ImportsPage() {
                       >
                         <div className="flex flex-col min-w-0">
                           <span className="font-semibold text-gray-800">{fmtDate(item.imported_date)}</span>
-                          <span className="break-all leading-snug">
-                            sl: {formatQty(item.quantity)}
-                          </span>
+                          <span className="break-all leading-snug">sl: {formatQty(item.quantity)}</span>
                         </div>
                         <div className="min-w-0 flex flex-col items-end text-right leading-tight">
                           <span className="max-w-full break-all font-semibold text-gray-900">{formatMoney(item.unit_cost)}</span>
@@ -405,10 +636,7 @@ export default function ImportsPage() {
                       </div>
                     ))}
                     <Link
-                      href={{
-                        pathname: "/imports/stats",
-                        query: { itemKey: group.key },
-                      }}
+                      href={{ pathname: "/imports/stats", query: { itemKey: group.key } }}
                       prefetch={false}
                       className="flex h-8 items-center justify-center rounded-lg text-base font-bold tracking-[0.2em] text-amber-500 transition-colors hover:bg-amber-50"
                       aria-label={`Xem thống kê tất cả lần nhập của ${group.name}`}
@@ -428,6 +656,251 @@ export default function ImportsPage() {
           ))}
         </div>
       </div>
+
+      <BottomSheet
+        open={openImportSheet}
+        closing={closingImportSheet}
+        title="Tạo lần nhập"
+        description={`${importForm.lines.length} mặt hàng đã chọn`}
+        icon={<PackagePlus className="h-5 w-5" />}
+        onCloseRequest={requestCloseImportSheet}
+        onClosed={closeImportSheet}
+        closeLabel="Đóng form nhập kho"
+        height="88vh"
+        zIndex={50}
+      >
+        <form className="flex min-h-full flex-col gap-4" onSubmit={requestImportConfirmation}>
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Đợt nhập mới</p>
+              <p className="mt-0.5 text-xs text-gray-400">Chọn nhiều mặt hàng trong cùng một lần</p>
+            </div>
+            <div className="w-[155px] shrink-0">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Ngày nhập
+              </span>
+              <AppDatePicker
+                ariaLabel="Ngày nhập phụ kiện"
+                height={44}
+                value={importForm.importedDate}
+                onValueChange={(value) => setImportForm((current) => ({ ...current, importedDate: value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Mặt hàng</label>
+              <span className="text-[11px] font-semibold text-amber-600">{importForm.lines.length} đã chọn</span>
+            </div>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                className="h-10 pl-9 pr-9"
+                value={importProductQuery}
+                onChange={(event) => setImportProductQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || (!canCreateQueriedProduct && !exactQueryGroup)) return;
+                  event.preventDefault();
+                  addQueriedProduct();
+                }}
+                placeholder="Tìm hoặc nhập tên mặt hàng mới"
+                autoComplete="off"
+              />
+              {importProductQuery && (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100"
+                  onClick={() => setImportProductQuery("")}
+                  aria-label="Xóa tìm kiếm mặt hàng"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {canCreateQueriedProduct && (
+              <button
+                type="button"
+                className="mb-2 flex w-full items-center gap-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/70 px-3 py-2.5 text-left text-sm font-semibold text-amber-700"
+                onClick={addQueriedProduct}
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-amber-600 shadow-sm">
+                  <Plus className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 truncate">Thêm mặt hàng mới “{importProductQuery.trim()}”</span>
+              </button>
+            )}
+
+            <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+              {quickImportProducts.length === 0 && (
+                <p className="px-4 py-6 text-center text-sm text-gray-400">
+                  {accessoryGroups.length === 0
+                    ? "Nhập tên mặt hàng ở ô tìm kiếm để bắt đầu"
+                    : "Không tìm thấy mặt hàng"}
+                </p>
+              )}
+              {quickImportProducts.map((group, index) => {
+                const line = importLineByKey.get(group.key);
+                const previousGroup = quickImportProducts[index - 1];
+                const previousWasSelected = previousGroup ? importLineByKey.has(previousGroup.key) : null;
+                const startsGroup = importForm.lines.length > 0
+                  && (index === 0 || previousWasSelected !== Boolean(line));
+
+                return (
+                  <Fragment key={group.key}>
+                    {startsGroup && (
+                      <div className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide ${line
+                        ? "bg-amber-100/80 text-amber-700"
+                        : "border-t-4 border-gray-100 bg-gray-50 text-gray-400"}`}
+                      >
+                        {line ? `Đã chọn · ${importForm.lines.length}` : "Chưa chọn"}
+                      </div>
+                    )}
+                    {line ? (
+                      <div className="border-t border-amber-100 bg-amber-50/60 px-3 py-3 first:border-t-0">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-gray-900">{line.name}</p>
+                            <p className="text-[11px] text-gray-400">
+                              {group.batches.length > 0
+                                ? `Giá gần nhất ${formatMoney(group.batches[0].unit_cost)}`
+                                : "Mặt hàng mới"}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-white text-red-500"
+                            onClick={() => removeImportLine(line.id)}
+                            aria-label={`Xóa ${line.name} khỏi danh sách đã chọn`}
+                            title="Xóa khỏi đã chọn"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <label className="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                            Số lượng
+                            <FormattedNumberInput
+                              className="mt-1 h-9 w-full bg-white text-sm font-bold"
+                              value={line.quantity}
+                              onValueChange={(value) => updateImportLine(line.id, "quantity", value)}
+                              aria-label={`Số lượng ${line.name}`}
+                            />
+                          </label>
+                          <label className="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                            Giá vốn
+                            <FormattedNumberInput
+                              className="mt-1 h-9 w-full bg-white text-sm font-bold"
+                              value={line.unitCost}
+                              onValueChange={(value) => updateImportLine(line.id, "unitCost", value)}
+                              placeholder="0"
+                              aria-label={`Giá vốn ${line.name}`}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex min-h-16 items-center gap-3 border-t border-gray-100 px-3 py-2 first:border-t-0">
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-gray-900">{group.name}</span>
+                          <span className="block text-xs text-gray-400">
+                            {group.batches.length} lần nhập · gần nhất {formatMoney(group.batches[0]?.unit_cost ?? 0)}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"
+                          onClick={() => selectProductForImport(group)}
+                          aria-label={`Thêm ${group.name}`}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="sticky bottom-0 z-10 -mx-5 -mb-4 mt-auto border-t border-gray-100 bg-white px-5 pb-2 pt-2 shadow-[0_-8px_20px_rgba(255,255,255,0.95)]">
+            {showImportSummary && importForm.lines.length > 0 && (
+              <div className="absolute bottom-full left-0 right-0 px-5 pb-2">
+                <div
+                  id="import-summary"
+                  className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-lg"
+                >
+                  {importForm.lines.map((line) => {
+                    const quantity = Number(line.quantity);
+                    const unitCost = Number(line.unitCost);
+                    const validQuantity = Number.isFinite(quantity) ? quantity : 0;
+                    const validUnitCost = Number.isFinite(unitCost) ? unitCost : 0;
+                    return (
+                      <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-xs">
+                        <span className="truncate text-gray-600" title={line.name}>
+                          {line.name} x {formatQty(validQuantity)}
+                        </span>
+                        <span className="font-semibold text-gray-700">
+                          = {formatMoney(validQuantity * validUnitCost)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-gray-600">Tổng vốn đợt nhập</span>
+              <button
+                type="button"
+                className="flex min-w-0 items-center justify-end gap-1 text-right text-xl font-bold text-amber-700 disabled:cursor-default"
+                onClick={() => setShowImportSummary((current) => !current)}
+                disabled={importForm.lines.length === 0}
+                aria-expanded={showImportSummary}
+                aria-controls="import-summary"
+                title={showImportSummary ? "Ẩn chi tiết đợt nhập" : "Xem chi tiết đợt nhập"}
+              >
+                <span className="break-all">{formatMoney(importTotal)}</span>
+                {importForm.lines.length > 0 && (
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showImportSummary ? "rotate-180" : ""}`} />
+                )}
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={requestClearImportDraft}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-500 transition-all hover:bg-red-100"
+                aria-label="Xoá nội dung lần nhập"
+                title="Xoá form"
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+              <Button
+                type="submit"
+                disabled={saving}
+                className="h-12 min-w-0 flex-1 bg-amber-500 text-base hover:bg-amber-600"
+              >
+                <PackagePlus className="h-4 w-4" />
+                {saving ? "Đang lưu" : `Lưu ${importForm.lines.length} mặt hàng`}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </BottomSheet>
+
+      {confirmingImport && (
+        <ImportConfirmationModal
+          form={importForm}
+          total={importTotal}
+          saving={saving}
+          onCancel={() => setConfirmingImport(false)}
+          onConfirm={() => void confirmAndSaveImport()}
+        />
+      )}
+
+      {confirmModal}
     </>
   );
 }

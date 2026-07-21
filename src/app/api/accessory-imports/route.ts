@@ -111,6 +111,34 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    if (body && typeof body === "object" && Array.isArray((body as Record<string, unknown>).items)) {
+      const items = (body as Record<string, unknown>).items as unknown[];
+      if (items.length === 0) {
+        return NextResponse.json({ error: "items must contain at least one item" }, { status: 400 });
+      }
+      if (items.length > 100) {
+        return NextResponse.json({ error: "items cannot contain more than 100 items" }, { status: 400 });
+      }
+
+      const rows: AccessoryImportRow[] = [];
+      for (const [index, item] of items.entries()) {
+        const parsed = parseAccessoryImport(item, true);
+        if ("error" in parsed) {
+          return NextResponse.json({ error: `items[${index}]: ${parsed.error}` }, { status: 400 });
+        }
+        rows.push(parsed.row);
+      }
+
+      const { data, error } = await supabase
+        .from("accessory_imports")
+        .insert(rows)
+        .select();
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(data satisfies AccessoryImport[]);
+    }
+
     const parsed = parseAccessoryImport(body, true);
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
     const row = parsed.row;
